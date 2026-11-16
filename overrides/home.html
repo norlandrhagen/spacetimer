@@ -1,0 +1,43 @@
+{#- spacetimer landing page. Opt in from docs/index.md front matter: template: home.html -#}
+{% extends "main.html" %}
+
+{% block tabs %}
+  {{ super() }}
+  <section class="st-hero" data-st-hero aria-labelledby="st-hero-title">
+    <div class="st-stars st-stars--far" aria-hidden="true"></div>
+    <div class="st-twinkle" aria-hidden="true"><i style="left:4%;top:12%;--d:0s"></i><i style="left:11%;top:62%;--d:-1.3s"></i><i style="left:19%;top:30%;--d:-2.1s"></i><i style="left:27%;top:78%;--d:-0.4s"></i><i style="left:34%;top:18%;--d:-2.8s"></i><i style="left:43%;top:50%;--d:-1.7s"></i><i style="left:52%;top:8%;--d:-0.9s"></i><i style="left:61%;top:70%;--d:-2.4s"></i><i style="left:68%;top:36%;--d:-0.2s"></i><i style="left:77%;top:86%;--d:-1.1s"></i><i style="left:85%;top:22%;--d:-3.0s"></i><i style="left:94%;top:58%;--d:-1.9s"></i></div>
+    <div class="st-stars st-stars--mid" aria-hidden="true"></div>
+    {% for w, top, d in [("zarr", 8, 6), ("icechunk", 62, 21), ("codec", 30, 36), ("chunk-grid", 80, 51), ("compression", 16, 66), ("shard", 48, 81)] %}
+    <div class="st-egg" aria-hidden="true" style="top:{{ top }}%;--d:{{ d }}s">
+      <img class="st-egg__dim" src="{{ ('assets/sprites/' ~ w ~ '-dim.svg') | url }}" alt="">
+      <img class="st-egg__lit" src="{{ ('assets/sprites/' ~ w ~ '-lit.svg') | url }}" alt="">
+    </div>
+    {% endfor %}
+    <div class="st-stars st-stars--dust" aria-hidden="true"></div>
+
+    <div class="md-grid st-hero__inner">
+      <div class="st-hero__copy">
+        <p class="st-kicker">Optimize your Zarr chunking</p>
+        <h1 id="st-hero-title" class="st-hero__title">
+          <span class="st-hero__logo st-sprite st-sprite--space" aria-hidden="true"></span>
+          spacetimer
+        </h1>
+        <div class="st-hero__actions">
+          <a href="#start" class="md-button md-button--primary">Start</a>
+          <a href="{{ 'usage/' | url }}" class="md-button">Guide</a>
+        </div>
+      </div>
+
+      <div class="st-scene" aria-hidden="true">
+        <div class="st-cruiser">
+          <div class="st-cruiser__body">
+            <div class="st-exhaust"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <span class="st-nozzle"></span>
+            <img class="st-ship" src="{{ 'assets/sprites/ship.svg' | url }}" alt="" width="240" height="84">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+{% block content %}{{ page.content }}{% endblock %}

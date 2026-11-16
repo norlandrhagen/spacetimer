@@ -1,0 +1,82 @@
+site_name: spacetimer
+site_description: >-
+  Chunk, shard, and codec recommendations for Xarray and Zarr.
+site_url: https://norlandrhagen.github.io/spacetimer/
+repo_url: https://github.com/norlandrhagen/spacetimer
+repo_name: norlandrhagen/spacetimer
+
+theme:
+  name: material
+  custom_dir: overrides
+  logo: assets/sprites/logo-planet.svg
+  favicon: assets/sprites/png/favicon-32.png
+  font: false
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.tabs.link
+
+extra:
+  generator: false
+
+extra_css:
+  - stylesheets/spacetimer.css
+  - stylesheets/splash.css
+
+extra_javascript:
+  - javascripts/splash.js
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            heading_level: 3
+            separate_signature: true
+            show_signature_annotations: true
+
+nav:
+  - Home: index.md
+  - Guide:
+      - Level select: usage.md
+      - Inputs: guide/inputs.md
+      - Use cases: guide/use-cases.md
+      - Reading the report: guide/reading-the-report.md
+      - Options: guide/options.md
+      - Bitrounding: guide/bitrounding.md
+      - Tips: guide/tips.md
+  - API: api.md

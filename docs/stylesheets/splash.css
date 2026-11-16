@@ -1,0 +1,249 @@
+/* spacetimer splash hero: a CSS-only side-scroller.
+ * Rules: steps() timing everywhere, whole-pixel moves, image-rendering: pixelated.
+ * --p is one ship pixel. Change it to rescale the ship and its exhaust together. */
+
+.st-hero {
+  --p: 6px;
+  position: relative;
+  overflow: hidden;
+  background: var(--st-void, #0b0a1f);
+  border-bottom: 2px solid var(--st-line, #2b2557);
+  color: var(--st-text, #e7e4fa);
+  isolation: isolate;
+}
+.st-hero img { image-rendering: pixelated; }
+
+/* ------------------------------------------------ layers 1–3: parallax stars */
+.st-stars {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-repeat: repeat;
+  background-size: 1024px 360px;
+  pointer-events: none;
+}
+.st-stars--far {
+  background-image: url("../assets/sprites/stars-far.svg");
+  animation: st-scroll 64s steps(512) infinite;
+}
+.st-stars--mid {
+  background-image: url("../assets/sprites/stars-mid.svg");
+  animation: st-scroll 20s steps(256) infinite;
+}
+.st-stars--dust {
+  background-image: url("../assets/sprites/stars-dust.svg");
+  animation: st-scroll 8s steps(256) infinite;
+}
+@keyframes st-scroll {
+  from { background-position: 0 0; }
+  to   { background-position: -1024px 0; }
+}
+
+/* ------------------------------------------------ twinkle: fixed stars, stepped opacity */
+.st-twinkle { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.st-twinkle i {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #fff;
+  animation: st-twinkle 3.2s step-end infinite;
+  animation-delay: var(--d, 0s);
+}
+.st-twinkle i:nth-child(3n) { background: var(--st-nebula, #b3a6f5); }
+.st-twinkle i:nth-child(odd) { animation-duration: 4.4s; }
+@keyframes st-twinkle {
+  0%  { opacity: 0.25; }
+  20% { opacity: 0.6; }
+  40% { opacity: 1; }
+  60% { opacity: 0.6; }
+  80% { opacity: 0.25; }
+}
+
+/* ------------------------------------------------ layer 8: ZARR constellation
+ * Drifts in from the right at the mid layer's speed (51.2 px/s, 4px steps), so it
+ * reads as part of the starfield. Shortly after entering, its stars swell to
+ * mid-star brightness for ~4 s, then settle back. Nothing else changes. */
+.st-egg {
+  position: absolute;
+  z-index: -1;
+  left: 100%;
+  pointer-events: none;
+  animation: st-egg-drift 90s steps(1152) var(--d, 0s) infinite;
+}
+.st-egg img { display: block; max-width: none; }
+.st-egg__lit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  opacity: 0;
+  animation: st-egg-lit 90s step-end var(--d, 0s) infinite;
+}
+@keyframes st-egg-drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-4608px); }
+}
+@keyframes st-egg-lit {
+  0%, 2.2% { opacity: 0; }
+  2.45%  { opacity: 0.2; }
+  2.9%   { opacity: 0.4; }
+  7.3%   { opacity: 0.2; }
+  7.8%   { opacity: 0; }
+}
+
+/* ------------------------------------------------ layout */
+.st-hero__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2rem 3rem;
+  padding: 3.2rem 1.2rem;
+  min-height: calc(100vh - 4.8rem); /* title screen: fills the window below header + tabs */
+}
+.st-hero__copy {
+  flex: 1 1 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.st-hero__title {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0;
+  font-family: var(--st-font-display, sans-serif);
+  font-weight: 700;
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  line-height: 1;
+  color: var(--st-nebula, #b3a6f5);
+  text-shadow: 4px 4px 0 var(--st-deep, #3b2f8f);
+}
+.st-hero__logo { flex: 0 0 auto; } /* 32x32 sprite at 2px = 64px */
+.st-hero__actions { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 0.4rem; }
+.st-hero__actions .md-button { margin: 0; }
+
+.st-scene {
+  flex: 1 1 18rem;
+  min-height: calc(var(--p) * 22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: calc(var(--p) * 16); /* room for the exhaust trail */
+}
+
+/* ------------------------------------------------ layer 5: the cruiser
+ * Level-flight sprite, pitched 5° nose-up, bobbing one ship-pixel in two hard steps. */
+.st-cruiser { transform: rotate(-5deg); }
+.st-cruiser__body {
+  position: relative;
+  width: calc(var(--p) * 40);
+  height: calc(var(--p) * 14);
+  animation: st-bob 1.6s step-end infinite;
+}
+.st-ship { display: block; width: 100%; height: 100%; }
+@keyframes st-bob {
+  0%  { transform: translateY(0); }
+  50% { transform: translateY(calc(var(--p) * 1)); }
+}
+
+/* click the scene (splash.js adds .is-jet): wind back, jet off the right
+ * edge, fly back in from the left */
+.st-scene { cursor: pointer; }
+.st-cruiser.is-jet { animation: st-jet 2.4s steps(12); }
+@keyframes st-jet {
+  0%   { transform: rotate(-5deg) translateX(0); }
+  12%  { transform: rotate(-5deg) translateX(calc(var(--p) * -4)); }
+  45%  { transform: rotate(-5deg) translateX(120vw); animation-timing-function: step-end; }
+  46%  { transform: rotate(-5deg) translateX(-120vw); animation-timing-function: steps(60); }
+  100% { transform: rotate(-5deg) translateX(0); }
+}
+
+/* ------------------------------------------------ layer 6: nozzle glow */
+.st-nozzle {
+  position: absolute;
+  left: var(--p);
+  top: calc(var(--p) * 6);
+  width: var(--p);
+  height: calc(var(--p) * 2);
+  background: #46e0d2;
+  animation: st-blink 0.3s step-end infinite;
+}
+@keyframes st-blink {
+  0%  { background: #46e0d2; }
+  50% { background: #7ff0e4; }
+}
+
+/* ------------------------------------------------ layer 7: chunk exhaust ("snapped wobble")
+ * Seven chunks on the ship's pixel grid ride a 7-slot conveyor:
+ * slots 0–2 are 2×2 ship-pixels, slots 3–6 single pixels; each slot alternates
+ * one ship-pixel up/down and steps through five teal shades. */
+.st-exhaust {
+  position: absolute;
+  left: 0;
+  top: calc(var(--p) * 7);
+  width: 0;
+  height: 0;
+}
+.st-exhaust i {
+  position: absolute;
+  right: 0;
+  top: calc(var(--p) * -1);
+  width: calc(var(--p) * 2);
+  height: calc(var(--p) * 2);
+  transform-origin: 100% 50%;
+  animation: st-chunk 1.2s step-end infinite;
+}
+.st-exhaust i:nth-child(2) { animation-delay: calc(-1.2s * 1 / 7); }
+.st-exhaust i:nth-child(3) { animation-delay: calc(-1.2s * 2 / 7); }
+.st-exhaust i:nth-child(4) { animation-delay: calc(-1.2s * 3 / 7); }
+.st-exhaust i:nth-child(5) { animation-delay: calc(-1.2s * 4 / 7); }
+.st-exhaust i:nth-child(6) { animation-delay: calc(-1.2s * 5 / 7); }
+.st-exhaust i:nth-child(7) { animation-delay: calc(-1.2s * 6 / 7); }
+@keyframes st-chunk {
+  0%      { transform: translate(0, calc(var(--p) * -1)) scale(1);                    background: #7ff0e4; }
+  14.286% { transform: translate(calc(var(--p) * -3), var(--p)) scale(1);             background: #3fc9bc; }
+  28.571% { transform: translate(calc(var(--p) * -6), calc(var(--p) * -1)) scale(1);  background: #3fc9bc; }
+  42.857% { transform: translate(calc(var(--p) * -9), var(--p)) scale(0.5);           background: #2a9c92; }
+  57.143% { transform: translate(calc(var(--p) * -11), calc(var(--p) * -1)) scale(0.5); background: #2a9c92; }
+  71.429% { transform: translate(calc(var(--p) * -13), var(--p)) scale(0.5);          background: #1e7f7a; }
+  85.714% { transform: translate(calc(var(--p) * -15), calc(var(--p) * -1)) scale(0.5); background: #145b5c; }
+}
+
+@keyframes st-chunk-tint {
+  0%      { background: #7ff0e4; }
+  14.286% { background: #3fc9bc; }
+  42.857% { background: #2a9c92; }
+  71.429% { background: #1e7f7a; }
+  85.714% { background: #145b5c; }
+}
+
+@media (min-width: 60em) {
+  .st-hero { --p: 8px; }
+}
+
+/* ------------------------------------------------ small screens: smaller ship */
+@media (max-width: 44.9375em) {
+  .st-hero { --p: 4px; }
+  .st-scene { padding-left: calc(var(--p) * 16); justify-content: flex-start; }
+}
+
+/* ------------------------------------------------ courtesy */
+.st-hero.is-paused,
+.st-hero.is-paused * {
+  animation-play-state: paused !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* keep opacity/color-only motion: twinkle, exhaust shimmer, menu cursor */
+  .st-hero,
+  .st-hero *:not(.st-twinkle i):not(.st-exhaust i) {
+    animation: none !important;
+  }
+  .st-exhaust i { animation-name: st-chunk-tint; animation-duration: 2.4s; }
+  .st-egg__lit { opacity: 0; }
+  .st-exhaust i:nth-child(1) { transform: translate(0, calc(var(--p) * -1)); background: #7ff0e4; }
+  .st-exhaust i:nth-child(2) { transform: translate(calc(var(--p) * -3), var(--p)); background: #3fc9bc; }
+  .st-exhaust i:nth-child(3) { transform: translate(calc(var(--p) * -6), calc(var(--p) * -1)); background: #3fc9bc; }
+  .st-exhaust i:nth-child(4) { transform: translate(calc(var(--p) * -9), var(--p)) scale(0.5); background: #2a9c92; }
+  .st-exhaust i:nth-child(5) { transform: translate(calc(var(--p) * -11), calc(var(--p) * -1)) scale(0.5); background: #2a9c92; }
+  .st-exhaust i:nth-child(6) { transform: translate(calc(var(--p) * -13), var(--p)) scale(0.5); background: #1e7f7a; }
+  .st-exhaust i:nth-child(7) { transform: translate(calc(var(--p) * -15), calc(var(--p) * -1)) scale(0.5); background: #145b5c; }
+}

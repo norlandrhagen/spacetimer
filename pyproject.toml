@@ -1,0 +1,46 @@
+[project]
+name = "spacetimer"
+version = "0.1.0"
+description = "Chunk, shard, and codec recommendations for Zarr, by use case"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "norlandrhagen", email = "norlandrhagen@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "xarray>=2025.9.0",
+    "zarr>=3.2.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.22,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+bench = [
+    "coiled>=1.135.6",
+    "obstore>=0.12.1",
+]
+dev = [
+    "dask>=2025.1.0",
+    "hypothesis>=6.150.0",
+    "icechunk>=1.1.19",
+    "prek>=0.5.2",
+    "pytest>=9.0.2",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.14.11",
+    "ty>=0.0.59",
+]
+docs = [
+    "mkdocs-material>=9",
+    "mkdocstrings[python]>=0.25",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+extend-select = ["I"]

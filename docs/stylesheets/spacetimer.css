@@ -1,0 +1,620 @@
+/* spacetimer docs theme for MkDocs Material.
+ * Pairs with mkdocs.yml: palette.scheme = slate, primary/accent = custom.
+ * Tokens first; everything below uses them. */
+
+/* ---------------------------------------------------------------- fonts */
+@font-face {
+  font-family: "Pixelify Sans";
+  src: url("../assets/fonts/pixelify-sans-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Pixelify Sans";
+  src: url("../assets/fonts/pixelify-sans-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Press Start 2P";
+  src: url("../assets/fonts/press-start-2p-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+/* ---------------------------------------------------------------- tokens */
+:root {
+  --st-void: #0b0a1f;
+  --st-void-deep: #07061a;
+  --st-panel: #14112e;
+  --st-panel-hi: #1a1640;
+  --st-header: #100e28;
+  --st-line: #2b2557;
+  --st-nebula: #b3a6f5;
+  --st-nebula-hi: #d6cefe;
+  --st-deep: #3b2f8f;
+  --st-purple: #6a5ad8;
+  --st-teal: #3fc9bc;
+  --st-teal-hi: #7ff0e4;
+  --st-teal-mid: #2a9c92;
+  --st-teal-dk: #1e7f7a;
+  --st-teal-deep: #145b5c;
+  --st-teal-line: #0f3b44;
+  --st-orange: #ff8a3d;
+  --st-orange-dk: #8a3a12;
+  --st-yellow: #ffd54a;
+  --st-hull: #9aa1b2;
+  --st-text: #e7e4fa;
+  --st-text-muted: #c9c4ee;
+  --st-text-faint: #9c96c8;
+
+  --st-font-display: "Pixelify Sans", system-ui, sans-serif;
+  --st-font-label: "Press Start 2P", ui-monospace, monospace;
+
+  /* Material custom primary / accent (mkdocs.yml: primary: custom, accent: custom) */
+  --md-primary-fg-color: var(--st-header);
+  --md-primary-fg-color--light: var(--st-panel-hi);
+  --md-primary-fg-color--dark: var(--st-void-deep);
+  --md-primary-bg-color: var(--st-text);
+  --md-primary-bg-color--light: var(--st-text-muted);
+  --md-accent-fg-color: var(--st-teal);
+  --md-accent-fg-color--transparent: rgba(63, 201, 188, 0.12);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 248;
+  --md-default-bg-color: var(--st-void);
+  --md-default-fg-color: var(--st-text);
+  --md-default-fg-color--light: var(--st-text-muted);
+  --md-default-fg-color--lighter: var(--st-text-faint);
+  --md-default-fg-color--lightest: var(--st-line);
+  --md-typeset-color: var(--st-text);
+  --md-typeset-a-color: var(--st-teal);
+  --md-code-bg-color: var(--st-void-deep);
+  --md-code-fg-color: var(--st-text);
+  --md-code-hl-keyword-color: var(--st-nebula);
+  --md-code-hl-string-color: var(--st-yellow);
+  --md-code-hl-number-color: var(--st-orange);
+  --md-code-hl-function-color: var(--st-teal-hi);
+  --md-code-hl-comment-color: #8e88ba;
+  --md-code-hl-name-color: var(--st-text);
+  --md-footer-bg-color: var(--st-header);
+  --md-footer-bg-color--dark: var(--st-void-deep);
+}
+
+/* ---------------------------------------------------------------- chrome */
+.md-header,
+.md-tabs {
+  background-color: var(--st-header);
+  border-bottom: 2px solid var(--st-line);
+  box-shadow: none;
+}
+.md-header__title,
+.md-header__topic {
+  font-family: var(--st-font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--st-nebula);
+}
+.md-header__button.md-logo img,
+.md-nav__button.md-logo img,
+.md-typeset img[src$=".svg"][src*="sprites/"] {
+  image-rendering: pixelated;
+}
+.md-nav__link--active,
+.md-nav__item .md-nav__link--active {
+  color: var(--st-teal);
+}
+.md-nav__title {
+  font-family: var(--st-font-label);
+  font-size: 0.5rem;
+  color: var(--st-text-faint);
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- type */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  font-family: var(--st-font-display);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.md-typeset h1 {
+  color: var(--st-nebula);
+  text-shadow: 3px 3px 0 var(--st-deep);
+}
+.md-typeset h2 { color: #fff; }
+.md-typeset h3 { color: var(--st-text); }
+
+.st-kicker,
+.md-typeset .st-kicker {
+  font-family: var(--st-font-label);
+  font-size: 0.55rem;
+  letter-spacing: 0.05em;
+  line-height: 1.9;
+  text-transform: uppercase;
+  color: var(--st-teal);
+}
+
+/* ---------------------------------------------------------------- code */
+.md-typeset pre > code,
+.md-typeset .highlight {
+  border-radius: 0;
+}
+.md-typeset .highlight,
+.md-typeset pre {
+  border: 2px solid var(--st-line);
+}
+.md-typeset .highlight pre { border: 0; }
+.md-typeset :not(pre) > code {
+  border-radius: 0;
+  background: var(--st-panel-hi);
+  color: var(--st-yellow);
+}
+.md-clipboard { color: var(--st-text-faint); }
+
+/* ---------------------------------------------------------------- admonitions
+ * Chunky pixel frame + hard offset shadow.
+ * note → nebula, tip/info/success → teal, warning/danger/bug → thruster orange. */
+.md-typeset .admonition,
+.md-typeset details {
+  --st-adm: var(--st-nebula);
+  --st-adm-shadow: var(--st-deep);
+  border: 4px solid var(--st-adm);
+  border-color: var(--st-adm) !important;
+  border-radius: 0;
+  box-shadow: 6px 6px 0 var(--st-adm-shadow);
+  background: var(--st-panel-hi);
+  color: var(--st-text);
+  margin-bottom: 1.6em;
+}
+.md-typeset .admonition:focus-within,
+.md-typeset details:focus-within {
+  box-shadow: 6px 6px 0 var(--st-adm-shadow);
+}
+.md-typeset .admonition:is(.tip, .hint, .important, .info, .todo, .success, .check, .done, .abstract, .summary, .tldr, .example),
+.md-typeset details:is(.tip, .hint, .important, .info, .todo, .success, .check, .done, .abstract, .summary, .tldr, .example) {
+  --st-adm: var(--st-teal);
+  --st-adm-shadow: var(--st-teal-line);
+}
+.md-typeset .admonition:is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug, .question, .help, .faq),
+.md-typeset details:is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug, .question, .help, .faq) {
+  --st-adm: var(--st-orange);
+  --st-adm-shadow: var(--st-orange-dk);
+}
+.md-typeset .admonition > .admonition-title,
+.md-typeset details > summary {
+  background-color: transparent !important;
+  border: 0;
+  font-family: var(--st-font-label);
+  font-size: 0.5rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--st-adm);
+}
+.md-typeset .admonition > .admonition-title::before,
+.md-typeset details > summary::before,
+.md-typeset details > summary::after {
+  background-color: var(--st-adm) !important;
+}
+
+/* ---------------------------------------------------------------- buttons */
+.md-typeset .md-button,
+.st-hero .md-button {
+  font-family: var(--st-font-label);
+  font-size: 0.55rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  border: 2px solid var(--st-purple);
+  border-radius: 0;
+  color: var(--st-text);
+  padding: 0.9em 1.2em;
+  display: inline-block;
+  text-decoration: none;
+}
+.md-typeset .md-button--primary,
+.st-hero .md-button--primary {
+  background: var(--st-orange);
+  border-color: var(--st-orange);
+  color: var(--st-void);
+  box-shadow: 4px 4px 0 var(--st-orange-dk);
+}
+.md-typeset .md-button:is(:hover, :focus-visible),
+.st-hero .md-button:is(:hover, :focus-visible) {
+  background: var(--st-teal);
+  border-color: var(--st-teal);
+  color: var(--st-void);
+}
+
+/* ---------------------------------------------------------------- option menu
+ * One blinking cursor, reused: content tabs, buttons, active nav link.
+ * Tabs are radio inputs, so arrow keys move the cursor for free. */
+/* 1.6s matches the ship's bob */
+@keyframes st-cursor {
+  0%  { opacity: 1; }
+  50% { opacity: 0; }
+}
+.md-typeset .tabbed-labels { box-shadow: 0 -2px 0 var(--st-line) inset; }
+.md-typeset .tabbed-labels::before { display: none !important; } /* Material's sliding underline eases */
+.md-typeset .tabbed-labels > label {
+  font-family: var(--st-font-label);
+  font-size: 0.55rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  padding: 1em 1.4em 1em 0.6em;
+  border-bottom: 0 !important;
+  transition: none;
+}
+.md-typeset .tabbed-labels > label::before,
+.md-typeset .md-button::before,
+.st-hero .md-button::before {
+  content: "";
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 0.75em;
+  height: 1em;
+  margin-right: 0.7em;
+  background: currentColor;
+  clip-path: polygon(0 0, 33% 0, 33% 17%, 66% 17%, 66% 33%, 100% 33%, 100% 66%, 66% 66%, 66% 83%, 33% 83%, 33% 100%, 0 100%); /* stair-stepped pixel arrow */
+  visibility: hidden;
+}
+.md-typeset .tabbed-labels > label:hover::before,
+.md-typeset .md-button:is(:hover, :focus-visible)::before {
+  visibility: visible;
+  opacity: 0.6;
+}
+.md-typeset .tabbed-set > input:nth-child(1):checked ~ .tabbed-labels > :nth-child(1),
+.md-typeset .tabbed-set > input:nth-child(2):checked ~ .tabbed-labels > :nth-child(2),
+.md-typeset .tabbed-set > input:nth-child(3):checked ~ .tabbed-labels > :nth-child(3),
+.md-typeset .tabbed-set > input:nth-child(4):checked ~ .tabbed-labels > :nth-child(4) {
+  color: var(--st-teal);
+}
+.md-typeset .tabbed-set > input:nth-child(1):checked ~ .tabbed-labels > :nth-child(1)::before,
+.md-typeset .tabbed-set > input:nth-child(2):checked ~ .tabbed-labels > :nth-child(2)::before,
+.md-typeset .tabbed-set > input:nth-child(3):checked ~ .tabbed-labels > :nth-child(3)::before,
+.md-typeset .tabbed-set > input:nth-child(4):checked ~ .tabbed-labels > :nth-child(4)::before,
+.md-typeset .tabbed-set > input:focus-visible ~ .tabbed-labels > label:hover::before {
+  visibility: visible;
+  opacity: 1;
+  animation: st-cursor 1.6s step-end infinite;
+}
+
+/* title screen: cursor sits on Start, jumps to whichever button you point at */
+.st-hero .md-button--primary::before,
+.st-hero .md-button:is(:hover, :focus-visible)::before {
+  visibility: visible;
+  animation: st-cursor 1.6s step-end infinite;
+}
+.st-hero__actions:has(.md-button:not(.md-button--primary):is(:hover, :focus-visible)) .md-button--primary::before {
+  visibility: hidden;
+}
+
+/* animated sprites: 8-frame strips from tools/make_sprites.py, played on hover.
+ * Sizes are whole multiples of the sprite grid so neighbouring frames never bleed in. */
+.st-sprite {
+  display: inline-block;
+  vertical-align: middle;
+  flex: 0 0 auto;
+  width: calc(var(--w) * var(--s, 2px));
+  height: calc(var(--h) * var(--s, 2px));
+  background-position: 0 0;
+  background-size: 800% 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+/* pad every icon to the tallest (32 rows) so switching tabs never shifts the page */
+.md-typeset .st-sprite { margin: calc((32 - var(--h)) * var(--s, 2px) / 2) 0.8em calc((32 - var(--h)) * var(--s, 2px) / 2) 0; }
+/* Start lands here: clear the sticky header, and keep the page long enough to scroll the hero away */
+#start { scroll-margin-top: 4rem; }
+.md-content:has(#start) { min-height: 100vh; }
+.st-sprite--time  { --w: 27; --h: 30; background-image: url("../assets/sprites/icon-time-strip.svg"); }
+.st-sprite--space { --w: 32; --h: 32; background-image: url("../assets/sprites/icon-space-strip.svg"); }
+.st-sprite--web   { --w: 34; --h: 26; background-image: url("../assets/sprites/icon-web-strip.svg"); }
+.st-sprite--balanced { --w: 34; --h: 26; background-image: url("../assets/sprites/icon-balanced-strip.svg"); }
+.st-sprite:hover { animation: st-sprite 1.6s steps(8) infinite; }
+.st-sprite--web:hover { animation-duration: 3.2s; } /* zoom levels need longer to read */
+@keyframes st-sprite {
+  to { background-position-x: calc(800% / 7); } /* 8 frame-widths, in background-position percent */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-sprite:hover { animation: none; }
+}
+
+/* ---------------------------------------------------------------- bridge console
+ * The "mission readout" frame. Markup (needs md_in_html):
+ *
+ * <div class="st-console" markdown>
+ *   <div class="st-console__elbow"></div>
+ *   <div class="st-console__top"><span>Mission readout</span><i></i><i></i></div>
+ *   <div class="st-console__rail"><span>Strat</span><span>Grid</span><span>Zarr</span></div>
+ *   <div class="st-console__screen" markdown>
+ *   ...any markdown, e.g. a code block or table...
+ *   </div>
+ * </div>
+ */
+.md-typeset .st-console {
+  display: grid;
+  grid-template-columns: 4.8rem minmax(0, 1fr);
+  grid-template-rows: 1.5rem auto;
+  background: var(--st-nebula);
+  margin: 1.5em 0 4em;
+}
+.st-console__elbow {
+  background: var(--st-nebula);
+  border-top-left-radius: 1.3rem;
+}
+.st-console__top {
+  display: flex;
+  gap: 6px;
+  background: var(--st-void);
+}
+.st-console__top span {
+  flex: 1 1 auto;
+  background: var(--st-nebula);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 0.6rem;
+  font-family: var(--st-font-label);
+  font-size: 0.45rem;
+  text-transform: uppercase;
+  color: var(--st-void);
+}
+.st-console__top i:nth-of-type(1) { flex: 0 0 3.6rem; background: var(--st-orange); }
+.st-console__top i:nth-of-type(2) { flex: 0 0 2.2rem; background: var(--st-yellow); border-radius: 0 0.75rem 0.75rem 0; }
+.st-console__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--st-void);
+}
+.st-console__rail span {
+  display: flex;
+  align-items: flex-end;
+  padding: 0.4rem 0.5rem;
+  font-family: var(--st-font-label);
+  font-size: 0.4rem;
+  text-transform: uppercase;
+  color: var(--st-void);
+}
+.st-console__rail span:nth-child(1) { flex: 1 1 auto; min-height: 3rem; background: var(--st-nebula); }
+.st-console__rail span:nth-child(2) { flex: 0 0 2.2rem; background: var(--st-orange); }
+.st-console__rail span:nth-child(3) { flex: 0 0 1.8rem; background: var(--st-teal); border-bottom-left-radius: 0.9rem; }
+.md-typeset .st-console__screen {
+  background: var(--st-void);
+  border-top-left-radius: 1.1rem;
+  padding: 1rem 1.2rem;
+  min-width: 0;
+}
+.md-typeset .st-console__screen > :first-child { margin-top: 0; }
+.md-typeset .st-console__screen > :last-child { margin-bottom: 0; }
+/* sized so the report fits the screen without scrolling */
+.md-typeset .st-console__screen pre > code { font-size: 0.76em; }
+.md-typeset .st-console__screen .highlight,
+.md-typeset .st-console__screen pre { border: 0; }
+
+
+/* ---------------------------------------------------------------- black hole
+ * splash.js adds .st-enter to <body> after each instant navigation: the screen
+ * starts swallowed by a pixel black hole (hole.svg: black disc, stair-stepped
+ * yellow and orange rings) that collapses to the centre.
+ * The one un-stepped animation: stepping a full-screen scale reads as lag. */
+@keyframes st-hole {
+  from { transform: scale(1); }
+  to   { transform: scale(0); }
+}
+body::after {
+  content: "";
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  /* the black disc is 46/64 of the sprite: 210vmax makes it cover a square viewport */
+  width: 210vmax;
+  height: 210vmax;
+  margin: -105vmax;
+  background: url("../assets/sprites/hole.svg") 0 0 / 100% 100%;
+  transform: scale(0);
+  pointer-events: none;
+  z-index: 999;
+}
+body.st-enter::after { animation: st-hole 1s linear; }
+@media (prefers-reduced-motion: reduce) {
+  body.st-enter::after { animation: none; }
+}
+
+/* ---------------------------------------------------------------- light scheme
+ * Reading surfaces only. The hero and header keep the dark --st-* tokens,
+ * and code blocks / the console readout stay dark. */
+[data-md-color-scheme="default"] {
+  --st-l-bg: #f6f4ff;
+  --st-l-panel: #ffffff;
+  --st-l-panel-hi: #ede9ff;
+  --st-l-line: #d6cefe;
+  --st-l-text: #1a1640;
+  --st-l-teal: #1b7671;
+  --st-l-orange: #b5541c;
+
+  --md-default-bg-color: var(--st-l-bg);
+  --md-default-fg-color: var(--st-l-text);
+  --md-default-fg-color--light: #3f3a6b;
+  --md-default-fg-color--lighter: #6b6596;
+  --md-default-fg-color--lightest: var(--st-l-line);
+  --md-typeset-color: var(--st-l-text);
+  --md-typeset-a-color: var(--st-l-teal);
+  --md-accent-fg-color: var(--st-l-teal);
+  --md-accent-fg-color--transparent: rgba(30, 127, 122, 0.1);
+  --md-code-bg-color: var(--st-void-deep);
+  --md-code-fg-color: var(--st-text);
+  --md-code-hl-keyword-color: var(--st-nebula);
+  --md-code-hl-string-color: var(--st-yellow);
+  --md-code-hl-number-color: var(--st-orange);
+  --md-code-hl-function-color: var(--st-teal-hi);
+  --md-code-hl-comment-color: #8e88ba;
+  --md-code-hl-name-color: var(--st-text);
+  --md-code-hl-operator-color: var(--st-text-muted);
+  --md-code-hl-punctuation-color: var(--st-text-muted);
+  --md-code-hl-variable-color: var(--st-text);
+  --md-code-hl-constant-color: var(--st-nebula);
+  --md-code-hl-special-color: var(--st-orange);
+  --md-code-hl-generic-color: var(--st-text-muted);
+  --md-footer-bg-color: var(--st-header);
+  --md-footer-bg-color--dark: var(--st-void-deep);
+  --md-footer-fg-color: var(--st-text);
+  --md-footer-fg-color--light: var(--st-text-muted);
+  --md-footer-fg-color--lighter: var(--st-text-faint);
+}
+[data-md-color-scheme="default"] .md-typeset h1 {
+  color: var(--st-deep);
+  text-shadow: 3px 3px 0 var(--st-l-line);
+}
+[data-md-color-scheme="default"] .md-typeset :is(h2, h3) { color: var(--st-deep); }
+[data-md-color-scheme="default"] :is(.st-kicker, .md-nav__link--active) { color: var(--st-l-teal); }
+/* light hero: paper sky, stars become ink dots */
+[data-md-color-scheme="default"] .st-hero { background: var(--st-l-bg); border-color: var(--st-l-line); }
+[data-md-color-scheme="default"] :is(.st-stars, .st-egg) { filter: brightness(0); opacity: 0.5; }
+[data-md-color-scheme="default"] .st-twinkle i { background: var(--st-deep); }
+[data-md-color-scheme="default"] .st-hero__title { color: var(--st-deep); text-shadow: 4px 4px 0 var(--st-l-line); }
+[data-md-color-scheme="default"] .st-hero .md-button:not(.md-button--primary) { color: var(--st-deep); border-color: var(--st-deep); }
+[data-md-color-scheme="default"] .md-typeset :not(pre) > code {
+  background: var(--st-l-panel-hi);
+  color: var(--st-deep);
+}
+[data-md-color-scheme="default"] .md-typeset .highlight,
+[data-md-color-scheme="default"] .md-typeset pre { border-color: var(--st-deep); }
+[data-md-color-scheme="default"] .md-typeset .highlight { background: var(--md-code-bg-color); }
+[data-md-color-scheme="default"] .md-typeset :is(.admonition, details) {
+  --st-adm: var(--st-deep);
+  --st-adm-shadow: var(--st-l-line);
+  background: var(--st-l-panel);
+  color: var(--st-l-text);
+}
+[data-md-color-scheme="default"] .md-typeset .admonition:is(.tip, .hint, .important, .info, .todo, .success, .check, .done, .abstract, .summary, .tldr, .example),
+[data-md-color-scheme="default"] .md-typeset details:is(.tip, .hint, .important, .info, .todo, .success, .check, .done, .abstract, .summary, .tldr, .example) {
+  --st-adm: var(--st-l-teal);
+  --st-adm-shadow: #b9e6e1;
+}
+[data-md-color-scheme="default"] .md-typeset .admonition:is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug, .question, .help, .faq),
+[data-md-color-scheme="default"] .md-typeset details:is(.warning, .caution, .attention, .danger, .error, .failure, .fail, .missing, .bug, .question, .help, .faq) {
+  --st-adm: var(--st-l-orange);
+  --st-adm-shadow: #f6d2bb;
+}
+[data-md-color-scheme="default"] .md-typeset .md-button:not(.md-button--primary) {
+  color: var(--st-deep);
+  border-color: var(--st-deep);
+}
+[data-md-color-scheme="default"] .md-typeset .st-console :is(.st-console__top, .st-console__rail) { background: var(--st-l-bg); }
+[data-md-color-scheme="default"] .md-typeset .st-console__screen { background: var(--st-l-panel-hi); }
+[data-md-color-scheme="default"] .md-typeset .tabbed-labels { box-shadow: 0 -2px 0 var(--st-l-line) inset; }
+
+/* keep inline code like "balanced" on one line in tables */
+.md-typeset table:not([class]) code {
+  white-space: nowrap;
+}
+
+/* Guide preset table: use_case values in the label font */
+.md-typeset .st-presets td:nth-child(2) code {
+  font-family: var(--st-font-label);
+  font-size: 0.55rem;
+  color: var(--st-teal);
+  background: none;
+  white-space: nowrap;
+}
+[data-md-color-scheme="default"] .md-typeset .st-presets td:nth-child(2) code { color: var(--st-l-teal); }
+
+/* TOC: sub-sections show only while you are reading inside their section */
+.md-nav--secondary .md-nav__item > .md-nav { display: none; }
+.md-nav--secondary .md-nav__item:has(.md-nav__link--active) > .md-nav { display: block; }
+
+/* Guide: level-select map */
+.md-typeset .st-levels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.8rem;
+  margin: 1.5rem 0 2rem;
+}
+.md-typeset .st-levels a {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 0.5rem;
+  background: var(--st-panel);
+  border: 2px solid var(--st-line);
+  box-shadow: 4px 4px 0 var(--st-void-deep);
+  color: var(--st-text);
+  text-align: center;
+}
+.md-typeset .st-levels a:is(:hover, :focus-visible) {
+  border-color: var(--st-teal);
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--st-teal-deep);
+}
+.st-lv-num { font-family: var(--st-font-label); font-size: 0.5rem; color: var(--st-teal); }
+.st-lv-name { font-family: var(--st-font-display); font-weight: 700; }
+.st-lv-art { position: relative; height: 48px; animation: st-lv-bob 1.6s steps(2) infinite; }
+.st-levels a:nth-child(2) .st-lv-art { animation-delay: -0.3s; }
+.st-levels a:nth-child(3) .st-lv-art { animation-delay: -0.9s; }
+.st-levels a:nth-child(4) .st-lv-art { animation-delay: -0.5s; }
+.st-levels a:nth-child(5) .st-lv-art { animation-delay: -1.2s; }
+.st-levels a:nth-child(6) .st-lv-art { animation-delay: -0.7s; }
+.st-lv-art img { height: 48px; width: auto; image-rendering: pixelated; transition: filter 0.15s steps(2); }
+.st-levels a:is(:hover, :focus-visible) .st-lv-art { animation-duration: 0.4s; }
+.st-levels a:is(:hover, :focus-visible) .st-lv-art img { filter: brightness(1.2) drop-shadow(0 0 6px var(--st-teal)); }
+.md-typeset .st-levels { position: relative; }
+.st-lv-ship {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: 40px;
+  height: 14px;
+  background: url("../assets/sprites/ship.svg") no-repeat;
+  pointer-events: none;
+  opacity: 0;
+  animation: st-lv-ship-idle 0.6s steps(2) infinite;
+  transition: opacity 0.15s steps(2);
+}
+.st-lv-ship.is-on { opacity: 1; }
+.st-lv-ship { --p: 1px; }
+.st-lv-ship .st-exhaust { transform: scale(1); transition: transform 0.3s steps(3); }
+.st-lv-ship.is-moving .st-exhaust { transform: scale(2.2); }
+/* the stepped idle jitter fights the smooth flight, so pause it in the air */
+.st-lv-ship.is-moving:not(.is-warp) { animation: none; }
+.st-lv-ship.is-warp { animation: st-lv-ship-warp 0.25s steps(5) forwards; }
+@keyframes st-lv-ship-idle { 50% { transform: translate(2px, -1px); } }
+@keyframes st-lv-ship-warp { to { transform: translateX(300px) scaleX(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .st-lv-ship, .st-lv-ship .st-exhaust i { animation: none !important; } }
+@keyframes st-lv-bob { 50% { transform: translateY(-2px); } }
+@media (max-width: 600px) { .md-typeset .st-levels { grid-template-columns: repeat(2, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .st-lv-art { animation: none; } }
+.md-typeset :is(h1, h2)[data-stage]::before {
+  content: "STAGE " attr(data-stage);
+  display: block;
+  margin-bottom: 0.3rem;
+  font-family: var(--st-font-label);
+  font-size: 0.55rem;
+  color: var(--st-teal);
+}
+[data-md-color-scheme="default"] .md-typeset .st-levels a {
+  background: var(--st-l-panel);
+  border-color: var(--st-l-line);
+  box-shadow: 4px 4px 0 var(--st-l-panel-hi);
+  color: var(--st-l-text);
+}
+[data-md-color-scheme="default"] .md-typeset .st-levels a:is(:hover, :focus-visible) { border-color: var(--st-l-teal); }
+[data-md-color-scheme="default"] :is(.st-lv-num, .md-typeset .st-back, .md-typeset [data-stage]::before) { color: var(--st-l-teal); }
+.md-typeset .st-back { font-family: var(--st-font-label); font-size: 0.55rem; color: var(--st-teal); }
+.md-typeset .st-back:hover { color: var(--st-teal-hi); }
+.md-typeset .st-stage-line {
+  font-family: var(--st-font-label);
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--st-teal);
+  text-shadow: 2px 2px 0 var(--st-purple);
+}
+[data-md-color-scheme="default"] .md-typeset .st-stage-line { color: var(--st-l-teal); }
