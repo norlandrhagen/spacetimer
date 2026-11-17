@@ -125,6 +125,15 @@ def test_repr_html_cubes() -> None:
     )
     lines = list(svg.iter("{http://www.w3.org/2000/svg}line"))
     assert 0 < len(lines) <= 3 * 2 * 2 * MAX_LINES  # axes, faces, layers
+    # every shard line is also a chunk line, and chunks still draw finer when they can
+    from spacetimer._svg import _cuts
+
+    cases = [(73000, 1, 282, 48), (721, 32, 256, 56), (1440, 32, 256, 62)]
+    for n, chunk, shard, length in cases:
+        shard_cuts = _cuts(n, shard, length, inner=chunk)
+        chunk_cuts = _cuts(n, chunk, length, outer=shard)
+        assert set(shard_cuts) <= set(chunk_cuts)
+        assert len(chunk_cuts) > len(shard_cuts)
     for shape in [(5,), (5, 7), (2, 3, 5, 7), (9, 8, 2, 3, 5, 7)]:
         dims = tuple(f"d{i}" for i in range(len(shape)))
         ElementTree.fromstring(cube_svg(dims, shape, (1,) * len(shape)))

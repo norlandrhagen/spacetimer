@@ -369,8 +369,7 @@ def _var_html(
     raw = [math.prod(g) * spec.dtype.itemsize for _, g in cols]
     rows = [
         ("shape", ["x".join(map(str, g)) for _, g in cols]),
-        ("raw", [_fmt_bytes(b) for b in raw]),
-        ("stored", [_fmt_bytes(b * ratio) for b in raw]),
+        ("size", [_fmt_bytes(b) for b in raw]),
         (
             "count",
             [
@@ -395,7 +394,7 @@ def _var_html(
             ("time", "time series", costs.series_chunks, costs.series_mib),
         )
     )
-    note = f"stored assumes compression_ratio={ratio:g} for every variable"
+    note = f"sizes are uncompressed; reads assume compression_ratio={ratio:g}"
 
     def by_dim(grid: tuple[int, ...]) -> str:
         return ", ".join(f"{d}={n}" for d, n in zip(spec.dims, grid))

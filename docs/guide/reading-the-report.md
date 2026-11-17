@@ -25,7 +25,7 @@ End a cell with the report, or call `ds.spacetimer.report(encoding)`. In a termi
 spacetimer.report(ds, spacetimer.recommend(ds, "time"))
 ```
 
-The report is one collapsible row per variable, like the Xarray repr; the first row starts open. A row shows array, chunk, and shard sizes beside a cube of the chunk grid, and what one map or one time series reads. `raw` is uncompressed and `stored` applies `compression_ratio`. `show shards` redraws the cube with shard boundaries, and `encoding` shows what to pass to `to_zarr`. Axes with many chunks draw every n-th line.
+The report is one collapsible row per variable, like the Xarray repr; the first row starts open. A row shows array, chunk, and shard sizes beside a cube of the chunk grid, and what one map or one time series reads. `size` is uncompressed, like the Xarray repr; read sizes apply `compression_ratio`. `show shards` redraws the cube with shard boundaries, and `encoding` shows what to pass to `to_zarr`. Axes with many chunks draw every n-th line; shard lines always fall on chunk lines, and shards draw fewer lines than chunks.
 
 The "one time series" line needs to know which axis is time. It looks for a dim with `time` in its name; if yours is called something else, pass `time_dim="..."`.
 

@@ -22,10 +22,28 @@ def _edge(n: int, biggest: int) -> int:
     return max(4, round(EDGE * math.log(n + 1) / math.log(biggest + 1)))
 
 
-def _cuts(n: int, step: int, length: int) -> list[int]:
-    """Unit offsets of block boundaries, every ``stride``-th when there are too many."""
-    count = -(-n // step)
-    stride = -(-count // (min(MAX_LINES, length // 6) + 1))
+def _stride(n: int, step: int, length: int, inner: int = 0) -> int:
+    """Draw every ``stride``-th block boundary when there are too many. A strided shard
+    grid (``inner`` = chunk size) draws fewer lines than its chunk grid, by log count."""
+    count = math.ceil(n / step)
+    cap = min(MAX_LINES, length // 6)
+    if inner and 0 < cap < count:
+        cap = max(1, round(cap * math.log(count) / math.log(math.ceil(n / inner))))
+    return math.ceil(count / (cap + 1))
+
+
+def _cuts(n: int, step: int, length: int, outer: int = 0, inner: int = 0) -> list[int]:
+    """Unit offsets of block boundaries. With ``outer`` (shard size), the stride divides
+    the drawn shard spacing so every shard line is also a chunk line."""
+    stride = _stride(n, step, length, inner)
+    if outer and stride > 1:
+        span = outer // step * _stride(n, outer, length, step)
+        # nearest divisor, so chunks stay finer than shards; up to ~2x the line cap
+        divisors = {
+            d for i in range(1, math.isqrt(span) + 1) if span % i == 0 for d in (i, span // i)
+        }
+        stride = min(divisors, key=lambda c: abs(math.log(c / stride)))
+    count = math.ceil(n / step)
     cuts = {round(k * step / n * length) for k in range(stride, count, stride)}
     return sorted(cuts - {0, length})
 
@@ -125,14 +143,19 @@ def _cube(
     h = _edge(ny, biggest) if nd >= 2 else 6
     d = _edge(nz, biggest) // 2 if nd == 3 else 0
 
-    def grid(steps: tuple[int, int, int], cls: str) -> str:
-        sz, sy, sx = steps
+    def grid(
+        steps: tuple[int, int, int],
+        cls: str,
+        outer: tuple[int, int, int] = (0, 0, 0),
+        inner: tuple[int, int, int] = (0, 0, 0),
+    ) -> str:
+        (sz, sy, sx), (oz, oy, ox), (iz, iy, ix) = steps, outer, inner
         lines = []
-        for x in _cuts(nx, sx, w):
+        for x in _cuts(nx, sx, w, ox, ix):
             lines += [(x, d, x, d + h), (x, d, x + d, 0)]
-        for y in _cuts(ny, sy, h):
+        for y in _cuts(ny, sy, h, oy, iy):
             lines += [(0, d + y, w, d + y), (w, d + y, w + d, y)]
-        for z in _cuts(nz, sz, d):
+        for z in _cuts(nz, sz, d, oz, iz):
             lines += [(z, d - z, w + z, d - z), (w + z, d - z, w + z, d - z + h)]
         marks = "".join(
             f'<line x1="{a}" y1="{b}" x2="{c}" y2="{e}"/>' for a, b, c, e in lines
@@ -147,8 +170,8 @@ def _cube(
         _poly(top, TOP),
         _poly(side, SIDE),
         # REPORT_CSS shows one of the two; "show shards" swaps them
-        grid(last3(chunks), "st-chunk"),
-        grid(last3(shards), "st-shard") if shards else "",
+        grid(last3(chunks), "st-chunk", outer=last3(shards) if shards else (0, 0, 0)),
+        grid(last3(shards), "st-shard", inner=last3(chunks)) if shards else "",
         _poly(front, "none"),
         _poly(top, "none"),
         _poly(side, "none"),
