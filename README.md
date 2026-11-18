@@ -22,6 +22,10 @@ ds.to_zarr("out.zarr", encoding=encoding)
 
 See the [docs](https://norlandrhagen.github.io/spacetimer/) for options, bitrounding, and how to read the report.
 
+## Credits
+
+spacetimer builds on the chunking, sharding, and bitrounding work in [dynamical.org's reformatters](https://github.com/dynamical-org/reformatters). Thanks to the dynamical.org team for sharing it openly.
+
 ## License
 
 [MIT](https://github.com/norlandrhagen/spacetimer/blob/main/LICENSE)
