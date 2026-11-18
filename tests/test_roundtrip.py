@@ -140,3 +140,33 @@ def test_cf_coords_find_spatial_and_time_dims():
     assert {"south_north", "west_east"} <= set(spatial) and "nv" not in spatial
     with pytest.warns(UserWarning, match="no spatial dim"):
         assert recommend(ds, "time", spatial_dims=("row",)) == {}
+
+
+def test_report_stored_layout():
+    """encoding=None reads the layout already in the store."""
+    ds = xr.Dataset({"v": (("time", "y", "x"), np.zeros((8, 64, 64), "f4"))})
+    enc = recommend(ds, "time", raw_chunk_bytes=4 * 16 * 16)
+    v3 = MemoryStore()
+    ds.to_zarr(v3, encoding=enc, zarr_format=3, consolidated=False)
+    want = spacetimer.report(ds, enc).costs
+
+    group = zarr.open_group(v3, mode="r")
+    stored = spacetimer.report(group)
+    assert stored.costs == want
+    assert stored.encoding["v"]["shards"] == enc["v"]["shards"]
+    opened = xr.open_zarr(v3, consolidated=False)
+    assert opened.spacetimer.report().costs == want
+    assert "<svg" in stored._repr_html_()
+
+    v2 = MemoryStore()
+    ds.to_zarr(v2, encoding={"v": {"chunks": (1, 32, 32)}}, zarr_format=2)
+    r2 = spacetimer.report(zarr.open_group(v2, mode="r", zarr_format=2))
+    assert (
+        r2.encoding["v"]["chunks"] == (1, 32, 32) and "shards" not in r2.encoding["v"]
+    )
+    assert "blosc" in r2._repr_html_()  # numcodecs compressor row
+
+    with pytest.raises(ValueError, match="no stored chunks for \\['v'\\]"):
+        spacetimer.report(ds)
+    with pytest.raises(TypeError, match="encoding=None"):
+        spacetimer.report([spacetimer.VarSpec("v", ("y", "x"), (4, 4), "f4")])

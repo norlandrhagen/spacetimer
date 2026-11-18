@@ -48,4 +48,13 @@ encoding = spacetimer.recommend(ds, "time", compressors=[ZstdCodec(level=5)])
 
 Changing the codec does not change the chunk sizes. If your codec compresses much more or less than 20%, pass a matching `compression_ratio` too.
 
+Variables compress differently: on GFS, zstd level 3 brought precipitation to 8% of its size and wind to 24%. To give each its own ratio, call `recommend` per group of variables and merge the results:
+
+```python
+encoding = {
+    **spacetimer.recommend(ds[["tp"]], "time", compression_ratio=0.08),
+    **spacetimer.recommend(ds.drop_vars("tp"), "time"),
+}
+```
+
 The result is a plain dict, so you can also edit any entry before writing, for example `encoding["t2m"]["compressors"] = [ZstdCodec(level=5)]`.

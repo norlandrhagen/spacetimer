@@ -211,13 +211,14 @@ def test_keepbits_convention():
         v("z", {"standard_name": "geopotential_height", "units": "m"}),
         v("t2m_c", {"standard_name": "air_temperature", "units": "degree_Celsius"}),
         v("t2m", {"standard_name": "air_temperature", "units": "K"}),
+        v("swh", {"units": "m"}),  # no rule matches
         v("rh", {"standard_name": "relative_humidity", "units": ["percent"]}),
         v("wind_direction"),
         v("mask", dtype="u1"),
         v("sp16", {"units": "Pa"}, dtype="f2"),
     ]
     # 7 bits would move 288.15 K to 288.0, so kelvin is left out
-    with pytest.warns(UserWarning, match="\\['t2m'\\]"):
+    with pytest.warns(UserWarning, match="\\['t2m', 'swh'\\]"):
         got = convention_keepbits(specs)
     assert got == {
         "u10": 6,

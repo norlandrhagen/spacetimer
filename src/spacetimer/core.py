@@ -316,7 +316,7 @@ class Report:
 
 def report(
     data: Data,
-    encoding: Mapping[str, Mapping[str, Any]],
+    encoding: Mapping[str, Mapping[str, Any]] | None = None,
     *,
     compression_ratio: float = 0.2,
     spatial_dims: Collection[str] = SPATIAL_DIMS,
@@ -325,13 +325,18 @@ def report(
     """Estimate read and storage costs of ``encoding`` (any, not only ours).
 
     Each entry needs ``chunks``; ``shards`` and ``compressors`` are optional, so
-    a hand-written dict or an array's ``.encoding`` works.
+    a hand-written dict or an array's ``.encoding`` works. ``encoding=None``
+    reports the layout already stored in a ``zarr.Group``, or in a Dataset
+    opened from Zarr.
     """
     _check_ratio(compression_ratio)
     spatial_dims, cf_time = _roles(data, spatial_dims)
+    all_specs = _specs(data)
+    if encoding is None:
+        encoding = _stored_encoding(data, [s.name for s in all_specs])
     out: dict[str, Costs] = {}
     specs: dict[str, VarSpec] = {}
-    for spec in _specs(data):
+    for spec in all_specs:
         if spec.name not in encoding:
             continue
         enc = encoding[spec.name]
@@ -352,6 +357,32 @@ def report(
             f"encoding names {missing}, not found in data", skip_file_prefixes=_PKG
         )
     return Report(out, encoding, compression_ratio, specs)
+
+
+def _stored_encoding(data: Data, names: list[str]) -> dict[str, dict[str, Any]]:
+    """Each variable's stored layout: Zarr array metadata, or Xarray's ``.encoding``."""
+    if isinstance(data, zarr.Group):
+        out: dict[str, dict[str, Any]] = {}
+        for name in names:
+            arr = data[name]
+            assert isinstance(arr, zarr.Array)
+            out[name] = {"chunks": arr.chunks, "compressors": tuple(arr.compressors)}
+            if arr.shards is not None:
+                out[name]["shards"] = arr.shards
+        return out
+    if isinstance(data, xr.Dataset):
+        keys = ("chunks", "shards", "compressors")
+        out = {
+            n: {k: v for k in keys if (v := data[n].encoding.get(k)) is not None}
+            for n in names
+        }
+        if missing := [n for n, e in out.items() if "chunks" not in e]:
+            raise ValueError(
+                f"no stored chunks for {missing}; open the data from Zarr or pass "
+                "an encoding"
+            )
+        return out
+    raise TypeError("encoding=None needs a zarr.Group or a Dataset opened from Zarr")
 
 
 def _check_ratio(ratio: float) -> None:
@@ -635,7 +666,7 @@ class SpacetimerAccessor:
 
     def report(
         self,
-        encoding: Mapping[str, Mapping[str, Any]],
+        encoding: Mapping[str, Mapping[str, Any]] | None = None,
         *,
         compression_ratio: float = 0.2,
         spatial_dims: Collection[str] = SPATIAL_DIMS,

@@ -7,7 +7,7 @@ hide:
 
 # Reading the report { data-stage="1-3" }
 
-`report` prints one row per variable. It works on any encoding, including one you wrote by hand.
+`report` prints one row per variable. It works on any encoding, including one you wrote by hand. Without an encoding, it reports the layout a store already has: `spacetimer.report(zarr.open_group("data.zarr"))` or `xr.open_zarr("data.zarr").spacetimer.report()`.
 
 | Column | Meaning |
 | --- | --- |
