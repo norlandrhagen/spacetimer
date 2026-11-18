@@ -56,7 +56,7 @@ Chunk, shard, and codec recommendations for Zarr
 === "Balanced"
 
     <span class="st-sprite st-sprite--balanced" aria-hidden="true"></span>
-    Halfway between Time and Space. For when you read both maps and time series.
+    Halfway between Time and Space: a map and a time series read about the same number of chunks.
 
     ```python
     import spacetimer
@@ -69,7 +69,7 @@ Chunk, shard, and codec recommendations for Zarr
     ```text
     | var | chunks      | shards       | objects | slice chunks | series chunks |
     | --- | ----------- | ------------ | ------- | ------------ | ------------- |
-    | t2m | 315x121x120 | 315x726x960  | 464     | 72           | 232           |
+    | t2m | 666x81x85   | 666x648x680  | 660     | 153          | 110           |
     ```
 
 === "Web"

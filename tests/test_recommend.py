@@ -164,10 +164,18 @@ def test_space_packs_time_into_shards():
 
 def test_balanced_sits_between_time_and_space():
     enc = recommend([ERA5], UseCase.BALANCED)
-    assert enc["t2m"]["chunks"] == (315, 121, 120)
+    assert enc["t2m"]["chunks"] == (666, 81, 85)
     c = {u: report([ERA5], recommend([ERA5], u)).costs["t2m"] for u in UseCase}
     assert c["space"].slice_mib < c["balanced"].slice_mib < c["time"].slice_mib
     assert c["time"].series_mib < c["balanced"].series_mib < c["space"].series_mib
+
+
+@pytest.mark.parametrize("steps", [720, 10950, 73000])
+def test_balanced_reads_maps_and_series_alike(steps):
+    spec = VarSpec("v", ("time", "lat", "lon"), (steps, 721, 1440), "f4")
+    c = report([spec], recommend([spec], "balanced")).costs["v"]
+    # even splitting rounds the edge, so within 2x rather than equal
+    assert 0.5 <= c.slice_chunks / c.series_chunks <= 2
 
 
 def test_shards_overhang_instead_of_leaving_a_sliver():

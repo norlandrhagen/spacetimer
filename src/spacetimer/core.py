@@ -6,7 +6,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 import numpy as np
 import xarray as xr
@@ -21,6 +21,7 @@ MiB = 1024 * 1024
 # caps shard size in chunks; the zarr v3 shard index is 16 B per chunk, so 8 KiB.
 # dynamical's worked example (1440x32x32 in 2880x384x384) holds 288
 MAX_INNER_CHUNKS = 512
+MIN_EDGE = 32  # the time preset's tile, so balanced never reads more per map
 SPATIAL_DIMS = frozenset({"x", "y", "lat", "lon", "latitude", "longitude"})
 # warnings skip our frames so they point at the caller, accessor included
 _PKG = (str(Path(__file__).parent),)
@@ -55,9 +56,10 @@ class Preset:
     chunk_bytes: int
     """Target chunk size, measured as ``basis`` says."""
     basis: SizeBasis
-    spatial_edge: int | None
-    """Fixed spatial tile edge; time takes the rest of the budget. ``None``: one
-    time step per chunk."""
+    spatial_edge: int | Literal["auto"] | None
+    """Spatial tile edge; time takes the rest of the budget. ``"auto"``: the edge
+    where one map and one time series read the same number of chunks. ``None``:
+    one time step per chunk."""
     chunks_per_shard: int
     """Default chunks per shard along each spatial dim."""
 
@@ -67,8 +69,8 @@ PRESETS: dict[UseCase, Preset] = {
     UseCase.TIME: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, 32, 8),
     # same byte target, spent on one time step of the largest tile that fits
     UseCase.SPACE: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, None, 8),
-    # fixed 128 edge, replace with a measured value after Phase 2
-    UseCase.BALANCED: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, 128, 8),
+    # same byte target; tile edge picked per variable, at least the time preset's 32
+    UseCase.BALANCED: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, "auto", 8),
     # topozarr: 512 KiB raw tiles, 4x4 chunks per shard
     UseCase.WEB: Preset(512 * 1024, SizeBasis.RAW, None, 4),
 }
@@ -417,6 +419,19 @@ def _fill_spatial(
     return out
 
 
+def _balanced_edge(
+    shape: tuple[int, ...], spatial: list[int], t: int, budget: int
+) -> int:
+    """Edge where map reads (prod(S) / e^n) equal series reads (T e^n / budget).
+
+    Their product prod(S) T / budget is fixed by the chunk size, so equal is
+    also the smallest worst case.
+    """
+    n = len(spatial)
+    maps = math.prod(shape[i] for i in spatial)
+    return max(MIN_EDGE, _iroot(maps * budget // shape[t], 2 * n))
+
+
 def _layout(
     spec: VarSpec,
     preset: Preset,
@@ -430,9 +445,12 @@ def _layout(
     chunks = [1] * ndim
     budget = max(1, raw_chunk_bytes // spec.dtype.itemsize)  # elements per chunk
 
-    if preset.spatial_edge is not None and t is not None:
+    edge = preset.spatial_edge
+    if edge == "auto" and t is not None:
+        edge = _balanced_edge(spec.shape, spatial, t, budget)
+    if isinstance(edge, int) and t is not None:
         # fixed-edge tiles first, then time takes what they leave
-        fixed = preset.spatial_edge ** len(spatial)
+        fixed = edge ** len(spatial)
         tile = _fill_spatial(spec.shape, spatial, fixed)
         chunks[t] = min(spec.shape[t], max(1, budget // math.prod(tile.values())))
         # keep those tiles; they only grow when time is too short to use the budget

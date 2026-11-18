@@ -30,7 +30,7 @@ Small chunks used to mean millions of objects, which are slow to list and hard o
 
 The sizes follow dynamical.org's [chunk and shard layout tool](https://github.com/dynamical-org/reformatters/blob/main/docs/chunk_shard_layout_tool.md): chunks of about 3.5 MiB compressed (2.5-6 MiB is fine), shards of 100-600 MiB, and square spatial tiles. Their tool assumes data compresses to 20% of its size, and `spacetimer` does the same by default.
 
-`"time"` uses the 32x32 tiles from their analysis mode. `"space"` (one time step per chunk) and `"balanced"` (128x128 tiles) are `spacetimer`'s own shapes at the same chunk size. dynamical.org also has a forecast mode, which keeps all lead times of one `init_time` together. `spacetimer` does not implement it.
+`"time"` uses the 32x32 tiles from their analysis mode. `"space"` (one time step per chunk) and `"balanced"` (tiles sized so maps and series read alike) are `spacetimer`'s own shapes at the same chunk size. dynamical.org also has a forecast mode, which keeps all lead times of one `init_time` together. `spacetimer` does not implement it.
 
 ### `"web"`
 
