@@ -1,22 +1,18 @@
 from __future__ import annotations
 
-import base64
-import html
 import math
 import warnings
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict
 
 import numpy as np
 import xarray as xr
 import zarr
 from zarr.abc.codec import BytesBytesCodec
 from zarr.codecs import BloscCodec
-
-from spacetimer._svg import cube_svg
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -25,7 +21,32 @@ MiB = 1024 * 1024
 # caps shard size in chunks; the zarr v3 shard index is 16 B per chunk, so 8 KiB.
 # dynamical's worked example (1440x32x32 in 2880x384x384) holds 288
 MAX_INNER_CHUNKS = 512
+MIN_EDGE = 32  # the time preset's tile, so balanced never reads more per map
+YEAR = np.timedelta64(365, "D")
+YEAR_RULE = (
+    "https://github.com/dynamical-org/reformatters/blob/"
+    "cb7d15bfe5dfba501ed383041d141444d6ee7009/src/scripts/chunk_shard_size.py#L330-L339"
+)
 SPATIAL_DIMS = frozenset({"x", "y", "lat", "lon", "latitude", "longitude"})
+# CF coordinate metadata that marks a coordinate's dims as spatial
+CF_SPATIAL_NAMES = frozenset(
+    {
+        "latitude",
+        "longitude",
+        "grid_latitude",
+        "grid_longitude",
+        "projection_x_coordinate",
+        "projection_y_coordinate",
+    }
+)
+CF_DEGREES = frozenset(
+    f"{deg}{sep}{d}"
+    for deg in ("degree", "degrees")
+    for sep in ("_", "")
+    for d in ("north", "east", "N", "E")
+)
+# warnings skip our frames so they point at the caller, accessor included
+_PKG = (str(Path(__file__).parent),)
 
 
 class UseCase(StrEnum):
@@ -42,17 +63,27 @@ class UseCase(StrEnum):
 
 
 class SizeBasis(StrEnum):
-    RAW = "raw"  # uncompressed bytes (web tiles are sized by extent)
-    COMPRESSED = "compressed"  # converted to raw with compression_ratio
+    """What a preset's ``chunk_bytes`` measures."""
+
+    RAW = "raw"
+    """Uncompressed bytes (web tiles are sized by extent)."""
+    COMPRESSED = "compressed"
+    """Compressed bytes, converted to raw with ``compression_ratio``."""
 
 
 @dataclass(frozen=True)
 class Preset:
+    """Chunk and shard targets for one use case; see ``PRESETS``."""
+
     chunk_bytes: int
+    """Target chunk size, measured as ``basis`` says."""
     basis: SizeBasis
-    # fixed spatial tile edge, remaining budget goes to time; None = time chunk 1
-    spatial_edge: int | None
+    spatial_edge: int | Literal["auto"] | None
+    """Spatial tile edge; time takes the rest of the budget. ``"auto"``: the edge
+    where one map and one time series read the same number of chunks. ``None``:
+    one time step per chunk."""
     chunks_per_shard: int
+    """Default chunks per shard along each spatial dim."""
 
 
 PRESETS: dict[UseCase, Preset] = {
@@ -60,8 +91,8 @@ PRESETS: dict[UseCase, Preset] = {
     UseCase.TIME: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, 32, 8),
     # same byte target, spent on one time step of the largest tile that fits
     UseCase.SPACE: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, None, 8),
-    # fixed 128 edge, replace with a measured value after Phase 2
-    UseCase.BALANCED: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, 128, 8),
+    # same byte target; tile edge picked per variable, at least the time preset's 32
+    UseCase.BALANCED: Preset(int(3.5 * MiB), SizeBasis.COMPRESSED, "auto", 8),
     # topozarr: 512 KiB raw tiles, 4x4 chunks per shard
     UseCase.WEB: Preset(512 * 1024, SizeBasis.RAW, None, 4),
 }
@@ -69,11 +100,17 @@ PRESETS: dict[UseCase, Preset] = {
 
 @dataclass(frozen=True)
 class VarSpec:
+    """One variable's metadata, to plan a layout before the data exists."""
+
     name: str
     dims: tuple[str, ...]
     shape: tuple[int, ...]
+    """Final shape; chunks never exceed it."""
     dtype: np.dtype
+    """Anything ``np.dtype`` accepts, e.g. ``"f4"``."""
     attrs: Mapping[str, Any] = field(default_factory=dict)
+    """CF attributes; ``convention_keepbits`` reads ``standard_name``,
+    ``long_name``, and ``units``."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dtype", np.dtype(self.dtype))
@@ -88,8 +125,11 @@ Data = xr.Dataset | zarr.Group | Iterable[VarSpec]
 
 
 class Encoding(TypedDict):
+    """One variable's entry in the ``to_zarr`` encoding ``recommend`` returns."""
+
     chunks: tuple[int, ...]
     shards: NotRequired[tuple[int, ...]]
+    """Absent with ``sharding=False``."""
     compressors: tuple[BytesBytesCodec, ...]
 
 
@@ -99,10 +139,14 @@ class Costs:
 
     chunk_mib: float
     shard_mib: float | None
-    objects: int  # shards, or chunks when unsharded
-    slice_chunks: int  # chunks read for one full spatial slice
+    """``None`` when unsharded."""
+    objects: int
+    """Stored objects: shards, or chunks when unsharded."""
+    slice_chunks: int
+    """Chunks read for one full spatial slice (one map)."""
     slice_mib: float
-    series_chunks: int  # chunks read for one point's full time series
+    series_chunks: int
+    """Chunks read for one point's full time series."""
     series_mib: float
 
 
@@ -148,6 +192,8 @@ def recommend(
             else int(preset.chunk_bytes / compression_ratio)
         )
 
+    spatial_dims, cf_time = _roles(data, spatial_dims)
+    steps = _time_steps(data)
     encoding: dict[str, Encoding] = {}
     skipped: list[str] = []
     for spec in _specs(data):
@@ -155,7 +201,7 @@ def recommend(
         if not spatial:
             skipped.append(spec.name)
             continue
-        t = _time_axis(spec, spatial, time_dim)
+        t = _time_axis(spec, spatial, time_dim, cf_time)
         if (
             preset.spatial_edge is not None
             and t is None
@@ -164,7 +210,7 @@ def recommend(
             warnings.warn(
                 f"{spec.name!r}: no time dim found in {spec.dims}, so the "
                 f"{use_case.value!r} layout falls back to spatial tiles; pass time_dim=",
-                stacklevel=2,
+                skip_file_prefixes=_PKG,
             )
         if (
             chunks_per_shard
@@ -173,9 +219,20 @@ def recommend(
             warnings.warn(
                 f"{spec.name!r}: chunks_per_shard={chunks_per_shard} reduced to {k} "
                 f"to keep a shard at or under {MAX_INNER_CHUNKS} chunks",
-                stacklevel=2,
+                skip_file_prefixes=_PKG,
             )
         chunks, shards = _layout(spec, preset, raw_chunk_bytes, cps, spatial, t)
+        if (
+            t is not None
+            and (step := steps.get(spec.dims[t])) is not None
+            and chunks[t] * step > YEAR
+        ):
+            warnings.warn(
+                f"{spec.name!r}: a time chunk spans {chunks[t] * step / np.timedelta64(1, 'D'):,.0f} "
+                f"days; dynamical.org keeps them to a year or less ({YEAR_RULE}). "
+                "Pass a smaller raw_chunk_bytes to shorten them",
+                skip_file_prefixes=_PKG,
+            )
         enc = Encoding(
             chunks=chunks,
             compressors=tuple(compressors),
@@ -187,71 +244,10 @@ def recommend(
         warnings.warn(
             f"no spatial dim in {skipped}, left to Xarray defaults; "
             "pass spatial_dims= if their dims have other names",
-            stacklevel=2,
+            skip_file_prefixes=_PKG,
         )
     return encoding
 
-
-# no asterisks in this CSS: Python-Markdown reads them as emphasis when the docs embed it
-# !important: JupyterLab and MkDocs Material both style tables in rendered HTML
-REPORT_CSS = """<style>
-.st-report{display:block;box-sizing:border-box;width:100%;max-width:900px;background:#14112e;color:#e7e4fa;border:2px solid #2b2557;
-box-shadow:6px 6px 0 #07061a;padding:12px;margin:0 6px 6px 0;
-font:11px/1.6 "Press Start 2P",ui-monospace,monospace}
-.st-var{border-bottom:2px solid #2b2557;margin-bottom:8px;padding-bottom:6px}
-.st-var:last-child{border:0;margin:0;padding:0}
-.st-tog{display:block;cursor:pointer;color:#c9c4ee}
-.st-tog b{color:#7ff0e4;font-weight:400}
-.st-tog input{position:absolute;opacity:0}
-.st-arrow::before{content:"▸";display:inline-block;width:1.2em;color:#3fc9bc;
-font:16px/1 system-ui,sans-serif}
-.st-tog input:checked+.st-arrow::before{content:"▾"}
-.st-tog input:focus-visible+.st-arrow{outline:2px solid #ffd54a}
-.st-tog:has(input:not(:checked))+.st-fold{display:none}
-.st-fold{padding-left:1.6em}
-.st-body{display:flex;flex-wrap:wrap;gap:16px;align-items:center;
-justify-content:space-between;padding:8px 0}
-.st-shard{display:none}
-.st-var:has(.st-sh input:checked) .st-shard{display:inline}
-.st-var:has(.st-sh input:checked) .st-chunk{display:none}
-.st-sh{display:inline-block;margin-top:10px;color:#c9c4ee;cursor:pointer}
-.st-sh input{accent-color:#3fc9bc;vertical-align:middle;margin:0 6px 0 0}
-.st-report td.st-dims{text-align:center;color:#c9c4ee!important}
-.st-note{color:#9c96c8;margin:6px 0 8px}
-.st-read div{margin:4px 0}
-.st-ic{display:inline-block;width:32px;height:32px;margin-right:10px;vertical-align:middle;
-background:center no-repeat;image-rendering:pixelated}
-.st-fig{flex:0 0 250px;height:240px;display:flex;align-items:center;justify-content:center}
-.st-wide{flex-basis:100%}
-.st-fig svg{max-width:100%;max-height:100%;width:auto;height:auto}
-.st-enc{background:#07061a;border:2px solid #2b2557;padding:4px 8px;margin:6px 0 4px 1.6em}
-.st-report .st-enc td{text-align:left}
-.st-report .st-enc tr:first-child>th,.st-report .st-enc tr:first-child>td{border-top:0}
-.st-report table{display:table;border-collapse:collapse;margin:0;border:0;font:inherit;font-size:10px}
-.st-report tr{background:transparent!important}
-.st-report th,.st-report td{padding:4px 7px;text-align:right;border:0;
-border-top:2px solid #2b2557;color:#e7e4fa!important;background:transparent!important}
-.st-report th{color:#3fc9bc!important;border-top:0;font-weight:400}
-.st-report th:first-child,.st-report td:first-child{text-align:left}
-</style>"""
-
-
-def _icon_css(path: Path) -> str:
-    b = path.read_bytes()
-    # PNGs are 4x; bytes 16-24 of a PNG are its width and height
-    w, h = int.from_bytes(b[16:20]) // 4, int.from_bytes(b[20:24]) // 4
-    return (
-        f".st-ic-{path.stem}{{background-size:{w}px {h}px;"
-        f'background-image:url("data:image/png;base64,{base64.b64encode(b).decode()}")}}\n'
-    )
-
-
-# the docs' time and space sprites, inlined so a notebook needs no assets
-REPORT_CSS = REPORT_CSS.replace(
-    "</style>",
-    "".join(map(_icon_css, sorted((Path(__file__).parent / "icons").glob("*.png"))))
-    + "</style>",
-)
 
 REPORT_HEAD = (
     "var",
@@ -273,7 +269,7 @@ class Report:
     """
 
     costs: dict[str, Costs]
-    encoding: Mapping[str, Encoding]
+    encoding: Mapping[str, Mapping[str, Any]]
     compression_ratio: float
     specs: Mapping[str, VarSpec]
 
@@ -320,6 +316,8 @@ class Report:
 
     def _repr_html_(self) -> str:
         """One collapsible row per variable, like the Xarray repr."""
+        from spacetimer._html import REPORT_CSS, _var_html  # lazy: _html imports core
+
         rows = "".join(
             _var_html(
                 self.specs[name],
@@ -333,129 +331,86 @@ class Report:
         return f'<div class="st-report">{REPORT_CSS}{rows}</div>'
 
 
-def _fmt_bytes(n: float) -> str:
-    for unit in ("B", "KiB", "MiB", "GiB"):
-        if n < 1024:
-            return f"{n:,.0f} B" if unit == "B" else f"{n:,.1f} {unit}"
-        n /= 1024
-    return f"{n:,.1f} TiB"
-
-
-def _codec_row(codec: Any) -> tuple[str, str]:
-    """Name and settings of a Zarr v3 codec, or a numcodecs one from a v2 store."""
-    if hasattr(codec, "to_dict"):
-        conf = codec.to_dict()
-        name, params = conf["name"], conf.get("configuration", {})
-    else:
-        params = dict(codec.get_config())
-        name = params.pop("id")
-    return str(name), ", ".join(f"{k}={v}" for k, v in params.items())
-
-
-def _toggle(label: str, *, opened: bool) -> str:
-    return (
-        f'<label class="st-tog"><input type="checkbox"{" checked" if opened else ""}>'
-        f'<span class="st-arrow"></span>{label}</label>'
-    )
-
-
-def _var_html(
-    spec: VarSpec, enc: Encoding, costs: Costs, *, ratio: float, opened: bool
-) -> str:
-    chunks, shards = enc["chunks"], enc.get("shards")
-    cols = [("array", spec.shape), ("chunk", chunks)]
-    if shards:
-        cols.append(("shard", shards))
-    raw = [math.prod(g) * spec.dtype.itemsize for _, g in cols]
-    rows = [
-        ("shape", ["x".join(map(str, g)) for _, g in cols]),
-        ("size", [_fmt_bytes(b) for b in raw]),
-        (
-            "count",
-            [
-                f"{math.prod(math.ceil(n / k) for n, k in zip(spec.shape, g)):,}"
-                for _, g in cols
-            ],
-        ),
-    ]
-    th = "".join(f"<th>{h}</th>" for h in ("", *(c for c, _ in cols)))
-    trs = (
-        f'<tr><th>dims</th><td colspan="{len(cols)}" class="st-dims">'
-        f"{html.escape(' x '.join(spec.dims))}</td></tr>"
-    ) + "".join(
-        f"<tr><th>{label}</th>" + "".join(f"<td>{v}</td>" for v in vals) + "</tr>"
-        for label, vals in rows
-    )
-    reads = "".join(
-        f'<div><i class="st-ic st-ic-{icon}"></i>one {what} reads {n:,} chunk{"s" * (n != 1)}, '
-        f"{_fmt_bytes(mib * MiB)}</div>"
-        for icon, what, n, mib in (
-            ("space", "map", costs.slice_chunks, costs.slice_mib),
-            ("time", "time series", costs.series_chunks, costs.series_mib),
-        )
-    )
-    note = f"sizes are uncompressed; reads assume compression_ratio={ratio:g}"
-
-    def by_dim(grid: tuple[int, ...]) -> str:
-        return ", ".join(f"{d}={n}" for d, n in zip(spec.dims, grid))
-
-    kv = [("chunks", by_dim(chunks))]
-    if shards:
-        per = [s // c for s, c in zip(shards, chunks)]
-        kv += [
-            ("shards", by_dim(shards)),
-            ("chunks per shard", f"{' x '.join(map(str, per))} = {math.prod(per):,}"),
-        ]
-    kv += [_codec_row(codec) for codec in enc.get("compressors", ())]
-    enc_rows = "".join(
-        f"<tr><th>{html.escape(k)}</th><td>{html.escape(v)}</td></tr>" for k, v in kv
-    )
-    head = (
-        f"<b>{html.escape(spec.name)}</b> ({html.escape(', '.join(spec.dims))}) "
-        f"{spec.dtype}"
-    )
-    swap = (
-        '<label class="st-sh"><input type="checkbox">show shards</label>'
-        if shards
-        else ""
-    )
-    return (
-        f'<div class="st-var">{_toggle(head, opened=opened)}<div class="st-fold">'
-        f'<div class="st-body"><div><table class="st-info"><thead><tr>{th}</tr></thead>'
-        f"<tbody>{trs}</tbody></table>{swap}</div>"
-        f'<div class="st-fig{" st-wide" * (len(spec.dims) > 3)}">{cube_svg(spec.dims, spec.shape, chunks, shards)}</div></div>'
-        f'<div class="st-read">{reads}</div><div class="st-note">{note}</div>'
-        f"{_toggle('encoding', opened=False)}"
-        f'<div class="st-fold st-enc"><table class="st-kv">{enc_rows}</table></div>'
-        "</div></div>"
-    )
-
-
 def report(
     data: Data,
-    encoding: Mapping[str, Encoding],
+    encoding: Mapping[str, Mapping[str, Any]] | None = None,
     *,
     compression_ratio: float = 0.2,
     spatial_dims: Collection[str] = SPATIAL_DIMS,
     time_dim: str | None = None,
 ) -> Report:
-    """Estimate read and storage costs of ``encoding`` (any, not only ours)."""
+    """Estimate read and storage costs of ``encoding`` (any, not only ours).
+
+    Each entry needs ``chunks``; ``shards`` and ``compressors`` are optional, so
+    a hand-written dict or an array's ``.encoding`` works. ``encoding=None``
+    reports the layout already stored in a ``zarr.Group``, or in a Dataset
+    opened from Zarr.
+    """
     _check_ratio(compression_ratio)
+    spatial_dims, cf_time = _roles(data, spatial_dims)
+    all_specs = _specs(data)
+    if encoding is None:
+        encoding = _stored_encoding(data, [s.name for s in all_specs])
     out: dict[str, Costs] = {}
     specs: dict[str, VarSpec] = {}
-    for spec in _specs(data):
+    for spec in all_specs:
         if spec.name not in encoding:
             continue
         enc = encoding[spec.name]
+        if "chunks" not in enc:
+            raise ValueError(f"{spec.name!r}: encoding has no chunks")
+        for key in ("chunks", "shards"):
+            if (grid := enc.get(key)) is None:
+                continue
+            if isinstance(grid, Mapping) or any(
+                not isinstance(n, int) or n < 1 for n in grid
+            ):
+                raise ValueError(
+                    f"{spec.name!r}: {key} must be a tuple of positive ints, one per "
+                    f"dim of {spec.dims}; got {grid!r}"
+                )
+            if len(grid) != len(spec.shape):
+                raise ValueError(
+                    f"{spec.name!r}: {key} {tuple(grid)} has {len(grid)} dims, "
+                    f"data has {len(spec.shape)} {spec.dims}"
+                )
         spatial = [i for i, d in enumerate(spec.dims) if d in spatial_dims]
-        t = _time_axis(spec, spatial, time_dim)
+        t = _time_axis(spec, spatial, time_dim, cf_time)
         out[spec.name] = _costs(
             spec, enc["chunks"], enc.get("shards"), spatial, t, compression_ratio
         )
         specs[spec.name] = spec
     if missing := sorted(set(encoding) - set(out)):
-        warnings.warn(f"encoding names {missing}, not found in data", stacklevel=2)
+        warnings.warn(
+            f"encoding names {missing}, not found in data", skip_file_prefixes=_PKG
+        )
     return Report(out, encoding, compression_ratio, specs)
+
+
+def _stored_encoding(data: Data, names: list[str]) -> dict[str, dict[str, Any]]:
+    """Each variable's stored layout: Zarr array metadata, or Xarray's ``.encoding``."""
+    if isinstance(data, zarr.Group):
+        out: dict[str, dict[str, Any]] = {}
+        for name in names:
+            arr = data[name]
+            assert isinstance(arr, zarr.Array)
+            out[name] = {"chunks": arr.chunks, "compressors": tuple(arr.compressors)}
+            if arr.shards is not None:
+                out[name]["shards"] = arr.shards
+        return out
+    if isinstance(data, xr.Dataset):
+        keys = ("chunks", "shards", "compressors")
+        out = {
+            n: {k: v for k in keys if (v := data[n].encoding.get(k)) is not None}
+            for n in names
+        }
+        if missing := [n for n, e in out.items() if "chunks" not in e]:
+            raise ValueError(
+                f"no stored chunks for {missing}; open the data from Zarr or pass "
+                "an encoding"
+            )
+        return out
+    raise TypeError("encoding=None needs a zarr.Group or a Dataset opened from Zarr")
 
 
 def _check_ratio(ratio: float) -> None:
@@ -471,37 +426,116 @@ def _specs(obj: Data) -> list[VarSpec]:
         ]
     if isinstance(obj, zarr.Group):
         arrays = dict(obj.arrays())
-        # non-dimension coords (e.g. 2-D lat/lon), as Xarray records them
-        coords = {
-            c
-            for attrs in (obj.attrs, *(a.attrs for a in arrays.values()))
-            for c in str(attrs.get("coordinates", "")).split()
-        }
+        coords = _coord_names(obj, arrays)
         specs, unnamed = [], []
         for name, arr in arrays.items():
-            names = getattr(arr.metadata, "dimension_names", None) or arr.attrs.get(
-                "_ARRAY_DIMENSIONS"
-            )
-            if not isinstance(names, (list, tuple)):
+            if (dims := _dims(arr)) is None:
                 unnamed.append(name)
                 continue
-            dims = tuple(map(str, names))
             if dims and dims != (name,) and name not in coords:
                 specs.append(VarSpec(name, dims, arr.shape, arr.dtype, dict(arr.attrs)))
         if unnamed:
-            warnings.warn(f"no dimension names on {unnamed}, skipped", stacklevel=3)
+            warnings.warn(
+                f"no dimension names on {unnamed}, skipped", skip_file_prefixes=_PKG
+            )
         return specs
     if isinstance(obj, xr.DataArray):  # iterating one would yield its slices
         raise TypeError("pass a Dataset (da.to_dataset()), zarr.Group, or VarSpecs")
     return list(obj)
 
 
-def _time_axis(spec: VarSpec, spatial: list[int], time_dim: str | None) -> int | None:
+def _dims(arr: zarr.Array) -> tuple[str, ...] | None:
+    """Dimension names from v3 metadata or the v2 ``_ARRAY_DIMENSIONS`` attr."""
+    if arr.ndim == 0:  # zarr stores no names for scalars like spatial_ref
+        return ()
+    names = getattr(arr.metadata, "dimension_names", None) or arr.attrs.get(
+        "_ARRAY_DIMENSIONS"
+    )
+    return tuple(map(str, names)) if isinstance(names, (list, tuple)) else None
+
+
+def _coord_names(group: zarr.Group, arrays: Mapping[str, zarr.Array]) -> set[str]:
+    """Non-dimension coords (e.g. 2-D lat/lon), as Xarray records them."""
+    return {
+        c
+        for attrs in (group.attrs, *(a.attrs for a in arrays.values()))
+        for c in str(attrs.get("coordinates", "")).split()
+    }
+
+
+def _coords(obj: Data) -> list[tuple[str, tuple[str, ...], np.dtype, Mapping]]:
+    """(name, dims, dtype, attrs) of each coordinate; none for ``VarSpec``s."""
+    if isinstance(obj, xr.Dataset):
+        return [
+            (str(n), tuple(map(str, c.dims)), c.dtype, c.attrs)
+            for n, c in obj.coords.items()
+        ]
+    if isinstance(obj, zarr.Group):
+        arrays = dict(obj.arrays())
+        named = _coord_names(obj, arrays)
+        return [
+            (name, dims, arr.dtype, arr.attrs)
+            for name, arr in arrays.items()
+            if (dims := _dims(arr)) is not None and (dims == (name,) or name in named)
+        ]
+    return []
+
+
+def _roles(
+    data: Data, spatial_dims: Collection[str]
+) -> tuple[Collection[str], set[str]]:
+    """Add CF-marked spatial dims to the default names, and find CF time dims.
+
+    A coordinate is spatial by ``axis`` X/Y, a lat/lon/projection
+    ``standard_name``, or degrees north/east ``units``; time by ``axis`` T,
+    ``standard_name`` time, "since" ``units``, or a datetime dtype. Bounds
+    coordinates are skipped. Explicit ``spatial_dims`` are used as given.
+    """
+    coords = _coords(data)
+    bounds = {str(a["bounds"]) for *_, a in coords if "bounds" in a}
+    spatial: set[str] = set()
+    time: set[str] = set()
+    for name, dims, dtype, attrs in coords:
+        if name in bounds:
+            continue
+        axis, sn, units = (
+            str(attrs.get(k, "")) for k in ("axis", "standard_name", "units")
+        )
+        if axis in ("X", "Y") or sn in CF_SPATIAL_NAMES or units in CF_DEGREES:
+            spatial.update(dims)
+        elif len(dims) == 1 and (
+            axis == "T"
+            or sn == "time"
+            or " since " in units
+            or np.issubdtype(dtype, np.datetime64)
+        ):
+            time.update(dims)
+    if spatial_dims is SPATIAL_DIMS:  # the default: names plus coordinate metadata
+        spatial_dims = SPATIAL_DIMS | spatial
+    return spatial_dims, time - set(spatial_dims)
+
+
+def _time_steps(data: Data) -> dict[str, np.timedelta64]:
+    """Spacing of each datetime index. A Dataset holds its indexes in memory; a
+    Group would need a data read, so it gets none."""
+    if not isinstance(data, xr.Dataset):
+        return {}
+    return {
+        str(d): v[1] - v[0]
+        for d, idx in data.indexes.items()
+        if len(v := np.asarray(idx)) > 1 and np.issubdtype(v.dtype, np.datetime64)
+    }
+
+
+def _time_axis(
+    spec: VarSpec, spatial: list[int], time_dim: str | None, cf_time: Collection[str]
+) -> int | None:
     if time_dim is not None:
         return spec.dims.index(time_dim) if time_dim in spec.dims else None
     other = [i for i in range(len(spec.dims)) if i not in spatial]
-    # name match, forecast (init_time x lead_time) treats init_time as time
-    return next((i for i in other if "time" in spec.dims[i]), None)
+    # CF metadata first, then names; forecast (init_time x lead_time) takes init_time
+    by_cf = [i for i in other if spec.dims[i] in cf_time]
+    return next(iter(by_cf + [i for i in other if "time" in spec.dims[i]]), None)
 
 
 def _iroot(x: int, n: int) -> int:
@@ -540,6 +574,19 @@ def _fill_spatial(
     return out
 
 
+def _balanced_edge(
+    shape: tuple[int, ...], spatial: list[int], t: int, budget: int
+) -> int:
+    """Edge where map reads (prod(S) / e^n) equal series reads (T e^n / budget).
+
+    Their product prod(S) T / budget is fixed by the chunk size, so equal is
+    also the smallest worst case.
+    """
+    n = len(spatial)
+    maps = math.prod(shape[i] for i in spatial)
+    return max(MIN_EDGE, _iroot(maps * budget // shape[t], 2 * n))
+
+
 def _layout(
     spec: VarSpec,
     preset: Preset,
@@ -553,9 +600,12 @@ def _layout(
     chunks = [1] * ndim
     budget = max(1, raw_chunk_bytes // spec.dtype.itemsize)  # elements per chunk
 
-    if preset.spatial_edge is not None and t is not None:
+    edge = preset.spatial_edge
+    if edge == "auto" and t is not None:
+        edge = _balanced_edge(spec.shape, spatial, t, budget)
+    if isinstance(edge, int) and t is not None:
         # fixed-edge tiles first, then time takes what they leave
-        fixed = preset.spatial_edge ** len(spatial)
+        fixed = edge ** len(spatial)
         tile = _fill_spatial(spec.shape, spatial, fixed)
         chunks[t] = min(spec.shape[t], max(1, budget // math.prod(tile.values())))
         # keep those tiles; they only grow when time is too short to use the budget
@@ -658,7 +708,7 @@ class SpacetimerAccessor:
 
     def report(
         self,
-        encoding: Mapping[str, Encoding],
+        encoding: Mapping[str, Mapping[str, Any]] | None = None,
         *,
         compression_ratio: float = 0.2,
         spatial_dims: Collection[str] = SPATIAL_DIMS,

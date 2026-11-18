@@ -30,9 +30,11 @@ To set the size yourself, pass `raw_chunk_bytes`, the uncompressed size in bytes
 
 ## Dimension names
 
-`spacetimer` finds spatial dimensions by name: `x`, `y`, `lat`, `lon`, `latitude`, or `longitude`. Every variable with a spatial dimension gets an entry in the encoding. Variables without one keep Xarray's defaults, and a warning lists them. `"time"` and `"balanced"` also warn if they can't find a time dimension.
+`spacetimer` finds spatial dimensions by name: `x`, `y`, `lat`, `lon`, `latitude`, or `longitude`. For a Dataset or Zarr group, it also reads the CF metadata on coordinates. A coordinate with `axis` X or Y, a latitude, longitude, or projection `standard_name`, or `units` of degrees north or east marks its dimensions as spatial. This finds WRF's `south_north` and `west_east` through their 2-D `XLAT`/`XLONG` coordinates. The time dimension is found the same way: `axis` T, `standard_name` time, `units` like "hours since 2000-01-01", or a datetime coordinate. Otherwise any dimension with "time" in its name is used.
 
-If your dimensions have other names, pass `spatial_dims=("row", "col")`. If the name of your time dimension doesn't contain "time", pass `time_dim="valid_time"`.
+Every variable with a spatial dimension gets an entry in the encoding. Variables without one keep Xarray's defaults, and a warning lists them. `"time"` and `"balanced"` also warn if they can't find a time dimension.
+
+If detection misses, pass `spatial_dims=("row", "col")`, which replaces both the names and the metadata detection. For time, pass `time_dim="valid_time"`.
 
 ## Compression
 
@@ -45,5 +47,14 @@ encoding = spacetimer.recommend(ds, "time", compressors=[ZstdCodec(level=5)])
 ```
 
 Changing the codec does not change the chunk sizes. If your codec compresses much more or less than 20%, pass a matching `compression_ratio` too.
+
+Variables compress differently: on GFS, zstd level 3 brought precipitation to 8% of its size and wind to 24%. To give each its own ratio, call `recommend` per group of variables and merge the results:
+
+```python
+encoding = {
+    **spacetimer.recommend(ds[["tp"]], "time", compression_ratio=0.08),
+    **spacetimer.recommend(ds.drop_vars("tp"), "time"),
+}
+```
 
 The result is a plain dict, so you can also edit any entry before writing, for example `encoding["t2m"]["compressors"] = [ZstdCodec(level=5)]`.

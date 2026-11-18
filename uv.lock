@@ -2725,7 +2725,7 @@ dev = [
     { name = "prek", specifier = ">=0.5.2" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "ruff", specifier = ">=0.14.11" },
+    { name = "ruff", specifier = ">=0.17.5" },
     { name = "ty", specifier = ">=0.0.59" },
 ]
 docs = [

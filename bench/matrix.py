@@ -1,4 +1,4 @@
-"""Phase 2 benchmark: write and read each layout cell, one JSON line per (cell, var, store).
+"""Benchmark: write and read each layout cell, one JSON line per (cell, var, store).
 
 Local smoke test (synthetic data, temp dir):
     uv run python bench/matrix.py --smoke

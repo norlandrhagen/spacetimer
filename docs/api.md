@@ -31,9 +31,17 @@ Registered as `ds.spacetimer` when `spacetimer` is imported.
 
 ::: spacetimer.VarSpec
 
+::: spacetimer.Preset
+
+::: spacetimer.SizeBasis
+
+::: spacetimer.PRESETS
+
 ## Bitrounding
 
 ::: spacetimer.convention_keepbits
+
+::: spacetimer.bitround.KEEPBITS
 
 ::: spacetimer.apply_keepbits
 

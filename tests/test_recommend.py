@@ -1,7 +1,9 @@
 import inspect
 import math
+import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 from hypothesis import given
@@ -164,10 +166,18 @@ def test_space_packs_time_into_shards():
 
 def test_balanced_sits_between_time_and_space():
     enc = recommend([ERA5], UseCase.BALANCED)
-    assert enc["t2m"]["chunks"] == (315, 121, 120)
+    assert enc["t2m"]["chunks"] == (666, 81, 85)
     c = {u: report([ERA5], recommend([ERA5], u)).costs["t2m"] for u in UseCase}
     assert c["space"].slice_mib < c["balanced"].slice_mib < c["time"].slice_mib
     assert c["time"].series_mib < c["balanced"].series_mib < c["space"].series_mib
+
+
+@pytest.mark.parametrize("steps", [720, 10950, 73000])
+def test_balanced_reads_maps_and_series_alike(steps):
+    spec = VarSpec("v", ("time", "lat", "lon"), (steps, 721, 1440), "f4")
+    c = report([spec], recommend([spec], "balanced")).costs["v"]
+    # even splitting rounds the edge, so within 2x rather than equal
+    assert 0.5 <= c.slice_chunks / c.series_chunks <= 2
 
 
 def test_shards_overhang_instead_of_leaving_a_sliver():
@@ -192,34 +202,35 @@ def test_silent_fallbacks_warn():
 
 
 def test_keepbits_convention():
+    def v(name, attrs=None, dtype="f4"):
+        return VarSpec(name, ("y", "x"), (10, 10), np.dtype(dtype), attrs or {})
+
     specs = [
-        VarSpec(
-            "u10",
-            ("y", "x"),
-            (10, 10),
-            np.dtype("f4"),
-            {"standard_name": "eastward_wind"},
-        ),
-        VarSpec(
-            "tp",
-            ("y", "x"),
-            (10, 10),
-            np.dtype("f4"),
-            {"long_name": "precipitation rate"},
-        ),
-        VarSpec("sp", ("y", "x"), (10, 10), np.dtype("f4"), {"units": "Pa"}),
-        VarSpec("t2m", ("y", "x"), (10, 10), np.dtype("f4"), {"units": "K"}),
-        VarSpec("wind_direction", ("y", "x"), (10, 10), np.dtype("f4")),
-        VarSpec("mask", ("y", "x"), (10, 10), np.dtype("u1")),
-        VarSpec("sp16", ("y", "x"), (10, 10), np.dtype("f2"), {"units": "Pa"}),
+        v("u10", {"standard_name": "eastward_wind"}),
+        v("tp", {"long_name": "precipitation rate"}),
+        v("sp", {"units": "Pa"}),
+        v("msl", {"units": "hPa"}),  # bits are relative, so hPa matches too
+        v("z", {"standard_name": "geopotential_height", "units": "m"}),
+        v("t2m_c", {"standard_name": "air_temperature", "units": "degree_Celsius"}),
+        v("t2m", {"standard_name": "air_temperature", "units": "K"}),
+        v("swh", {"units": "m"}),  # no rule matches
+        v("rh", {"standard_name": "relative_humidity", "units": ["percent"]}),
+        v("wind_direction"),
+        v("mask", dtype="u1"),
+        v("sp16", {"units": "Pa"}, dtype="f2"),
     ]
-    # unmatched floats are left out: 7 bits would move 288.15 K to 288.0
-    with pytest.warns(UserWarning, match="\\['t2m', 'wind_direction'\\]"):
+    # 7 bits would move 288.15 K to 288.0, so kelvin is left out
+    with pytest.warns(UserWarning, match="\\['t2m', 'swh'\\]"):
         got = convention_keepbits(specs)
     assert got == {
         "u10": 6,
-        "tp": 8,
+        "tp": 7,
         "sp": 11,
+        "msl": 11,
+        "z": 11,
+        "t2m_c": 7,
+        "rh": 7,
+        "wind_direction": 12,
         "sp16": 10,  # clamped to float16's mantissa
     }
 
@@ -250,6 +261,10 @@ def test_accessor_matches_functions():
     enc = ds.spacetimer.recommend("web", sharding=False)
     assert enc == recommend(ds, "web", sharding=False)
     assert ds.spacetimer.report(enc).costs == report(ds, enc).costs
+    t2 = xr.Dataset({"T2": (("Time", "sn", "we"), np.zeros((2, 3, 3), "f4"))})
+    with pytest.warns(UserWarning, match="no spatial dim") as rec:
+        t2.spacetimer.recommend("time")
+    assert rec[0].filename == __file__  # points at the caller, not the accessor
     wind = xr.Dataset({"wind_speed": ("x", np.float32([1.2345678]))})
     assert wind.spacetimer.bitround()["wind_speed"].item() == np.float32(1.234375)
     assert wind.spacetimer.bitround(keepbits={})["wind_speed"].item() != 1.234375
@@ -285,12 +300,34 @@ def test_compressors_override(tmp_path):
 def test_report_hand_written_encoding():
     import numcodecs
 
-    from spacetimer.core import _codec_row, _fmt_bytes
+    from spacetimer._html import _codec_row, _fmt_bytes
 
     spec = VarSpec("v", ("time", "y", "x"), (10, 50, 50), "f4")
     r = report([spec], {"v": {"chunks": (1, 50, 50)}})  # no compressors, no shards
     assert "<td>1x50x50</td>" in r._repr_html_()
     with pytest.warns(UserWarning, match="\\['typo'\\], not found"):
         assert report([spec], {"typo": {"chunks": (1, 1, 1)}}).costs == {}
+    with pytest.raises(ValueError, match="'v': chunks \\(10, 10\\) has 2 dims"):
+        report([spec], {"v": {"chunks": (10, 10)}})
+    with pytest.raises(ValueError, match="shards"):
+        report([spec], {"v": {"chunks": (1, 5, 5), "shards": (1, 10, 10, 1)}})
+    with pytest.raises(ValueError, match="no chunks"):
+        report([spec], {"v": {"shards": (10, 50, 50)}})
+    for bad in ((0, 50, 50), {"time": 1, "y": 50, "x": 50}):
+        with pytest.raises(ValueError, match="tuple of positive ints"):
+            report([spec], {"v": {"chunks": bad}})
     assert _codec_row(numcodecs.Zstd(level=3)) == ("zstd", "level=3, checksum=False")
     assert _fmt_bytes(3 * 1024**4) == "3.0 TiB"
+
+
+@pytest.mark.parametrize(("freq", "warns"), [("h", False), ("D", True)])
+def test_warns_on_time_chunks_over_a_year(freq, warns):
+    shape = (365 * 30, 64, 64)
+    ds = xr.Dataset(
+        {"v": (("time", "lat", "lon"), np.broadcast_to(np.float32(0), shape))},
+        coords={"time": pd.date_range("1990", periods=shape[0], freq=freq)},
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        recommend(ds, "time")
+    assert any("a year or less" in str(x.message) for x in w) == warns
