@@ -289,7 +289,7 @@ def test_compressors_override(tmp_path):
 def test_report_hand_written_encoding():
     import numcodecs
 
-    from spacetimer.core import _codec_row, _fmt_bytes
+    from spacetimer._html import _codec_row, _fmt_bytes
 
     spec = VarSpec("v", ("time", "y", "x"), (10, 50, 50), "f4")
     r = report([spec], {"v": {"chunks": (1, 50, 50)}})  # no compressors, no shards
