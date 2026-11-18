@@ -40,7 +40,10 @@ def _cuts(n: int, step: int, length: int, outer: int = 0, inner: int = 0) -> lis
         span = outer // step * _stride(n, outer, length, step)
         # nearest divisor, so chunks stay finer than shards; up to ~2x the line cap
         divisors = {
-            d for i in range(1, math.isqrt(span) + 1) if span % i == 0 for d in (i, span // i)
+            d
+            for i in range(1, math.isqrt(span) + 1)
+            if span % i == 0
+            for d in (i, span // i)
         }
         stride = min(divisors, key=lambda c: abs(math.log(c / stride)))
     count = math.ceil(n / step)
