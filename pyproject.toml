@@ -15,6 +15,11 @@ dependencies = [
     "zarr>=3.2.1",
 ]
 
+[project.urls]
+Documentation = "https://norlandrhagen.github.io/spacetimer/"
+Repository = "https://github.com/norlandrhagen/spacetimer"
+Issues = "https://github.com/norlandrhagen/spacetimer/issues"
+
 [build-system]
 requires = ["uv_build>=0.9.22,<0.10.0"]
 build-backend = "uv_build"

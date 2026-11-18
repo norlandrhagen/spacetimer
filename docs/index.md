@@ -101,11 +101,11 @@ Chunk, shard, and codec recommendations for Zarr
 === "uv"
 
     ```bash
-    uv add git+https://github.com/norlandrhagen/spacetimer
+    uv add spacetimer
     ```
 
 === "pip"
 
     ```bash
-    pip install git+https://github.com/norlandrhagen/spacetimer
+    pip install spacetimer
     ```
