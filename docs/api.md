@@ -41,6 +41,8 @@ Registered as `ds.spacetimer` when `spacetimer` is imported.
 
 ::: spacetimer.convention_keepbits
 
+::: spacetimer.bitround.KEEPBITS
+
 ::: spacetimer.apply_keepbits
 
 ::: spacetimer.round_mantissa

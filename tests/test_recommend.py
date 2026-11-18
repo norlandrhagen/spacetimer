@@ -192,34 +192,34 @@ def test_silent_fallbacks_warn():
 
 
 def test_keepbits_convention():
+    def v(name, attrs=None, dtype="f4"):
+        return VarSpec(name, ("y", "x"), (10, 10), np.dtype(dtype), attrs or {})
+
     specs = [
-        VarSpec(
-            "u10",
-            ("y", "x"),
-            (10, 10),
-            np.dtype("f4"),
-            {"standard_name": "eastward_wind"},
-        ),
-        VarSpec(
-            "tp",
-            ("y", "x"),
-            (10, 10),
-            np.dtype("f4"),
-            {"long_name": "precipitation rate"},
-        ),
-        VarSpec("sp", ("y", "x"), (10, 10), np.dtype("f4"), {"units": "Pa"}),
-        VarSpec("t2m", ("y", "x"), (10, 10), np.dtype("f4"), {"units": "K"}),
-        VarSpec("wind_direction", ("y", "x"), (10, 10), np.dtype("f4")),
-        VarSpec("mask", ("y", "x"), (10, 10), np.dtype("u1")),
-        VarSpec("sp16", ("y", "x"), (10, 10), np.dtype("f2"), {"units": "Pa"}),
+        v("u10", {"standard_name": "eastward_wind"}),
+        v("tp", {"long_name": "precipitation rate"}),
+        v("sp", {"units": "Pa"}),
+        v("msl", {"units": "hPa"}),  # bits are relative, so hPa matches too
+        v("z", {"standard_name": "geopotential_height", "units": "m"}),
+        v("t2m_c", {"standard_name": "air_temperature", "units": "degree_Celsius"}),
+        v("t2m", {"standard_name": "air_temperature", "units": "K"}),
+        v("rh", {"standard_name": "relative_humidity", "units": ["percent"]}),
+        v("wind_direction"),
+        v("mask", dtype="u1"),
+        v("sp16", {"units": "Pa"}, dtype="f2"),
     ]
-    # unmatched floats are left out: 7 bits would move 288.15 K to 288.0
-    with pytest.warns(UserWarning, match="\\['t2m', 'wind_direction'\\]"):
+    # 7 bits would move 288.15 K to 288.0, so kelvin is left out
+    with pytest.warns(UserWarning, match="\\['t2m'\\]"):
         got = convention_keepbits(specs)
     assert got == {
         "u10": 6,
-        "tp": 8,
+        "tp": 7,
         "sp": 11,
+        "msl": 11,
+        "z": 11,
+        "t2m_c": 7,
+        "rh": 7,
+        "wind_direction": 12,
         "sp16": 10,  # clamped to float16's mantissa
     }
 

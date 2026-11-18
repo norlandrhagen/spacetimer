@@ -20,15 +20,22 @@ The values are rounded before writing, not by a codec, so any Zarr reader can op
 
 `keepbits` is the number of mantissa bits to keep. The mantissa is the part of a float that holds its significant digits.
 
-`bitround()` with no arguments uses dynamical.org's table. `convention_keepbits(ds)` returns the same table as a dict:
+`bitround()` with no arguments uses the bits dynamical.org chose for each variable in their [reformatters](https://github.com/dynamical-org/reformatters) datasets. `convention_keepbits(ds)` returns the same choices as a dict. Variables are matched on CF `standard_name` first:
 
-| Variable | Matched on | Mantissa bits |
-| --- | --- | --- |
-| Wind speed and components | "wind" in the name, `standard_name`, or `long_name` (not "direction") | 6 |
-| Precipitation | "precip" in the same fields | 8 |
-| Pressure | `units` of `Pa` | 11 |
+| Mantissa bits | `standard_name` |
+| --- | --- |
+| 6 | Wind components, `wind_speed`, `wind_speed_of_gust` |
+| 7 | Temperatures (in °C only), precipitation, humidity, cloud cover, radiation fluxes, snow, soil moisture, runoff, CAPE |
+| 8 | `convective_precipitation_flux`, `snowfall_flux`, NDVI |
+| 10 | `air_pressure` |
+| 11 | `surface_air_pressure`, `air_pressure_at_mean_sea_level`, `geopotential_height` |
+| 12 | `wind_from_direction` |
 
-Other float variables are not rounded unless you add them yourself. A warning lists them.
+The full table is `spacetimer.bitround.KEEPBITS`. Where dynamical.org used different values across datasets, it takes the most common one, and the higher one on a tie.
+
+Without a known `standard_name`, "wind" (6), "precip" (7), or "direction" (12) in the name or `long_name` matches, as do pressure `units` (`Pa`, `hPa`, `kPa`, `mbar`: 11).
+
+Other float variables, and temperatures in kelvin, are not rounded unless you add them yourself. A warning lists them.
 
 ## Per variable
 
@@ -47,6 +54,6 @@ ds = ds.spacetimer.bitround(keepbits={**convention_keepbits(ds), "t2m": 10})
 
 Keeping `n` bits stores a value to within 1 part in 2^(n+1). The error grows with the value, so this works well for values near zero and poorly for values with a large offset. At 7 bits, 15 °C is stored to within 0.03 °C, but 288.15 K becomes 288.0, an error of up to 1 K.
 
-dynamical.org's default of 7 bits assumes their units (°C, and Pa at 11 bits). This is why `spacetimer` does not round variables it can't identify.
+dynamical.org's 7 bits for temperature assume °C. This is why `spacetimer` skips temperatures in kelvin and does not round variables it can't identify.
 
 To choose a value, decide how much error you can accept at the variable's typical magnitude. Then check the rounded data before writing.

@@ -8,7 +8,78 @@ import xarray as xr
 
 from spacetimer.core import _PKG, Data, VarSpec, _specs
 
-PASCAL = frozenset({"Pa", "pascal", "pascals"})
+# keep_mantissa_bits by CF standard_name across dynamical.org reformatters'
+# template configs (commit cb7d15b): the most common value, ties to the higher
+KEEPBITS: dict[str, int] = {
+    **dict.fromkeys(
+        (
+            "eastward_wind",
+            "northward_wind",
+            "x_wind",
+            "y_wind",
+            "wind_speed",
+            "wind_speed_of_gust",
+        ),
+        6,
+    ),
+    **dict.fromkeys(
+        (
+            "air_temperature",
+            "dew_point_temperature",
+            "sea_surface_temperature",
+            "soil_temperature",
+            "surface_temperature",
+            "precipitation_flux",
+            "runoff_flux",
+            "surface_runoff_flux",
+            "relative_humidity",
+            "specific_humidity",
+            "cloud_area_fraction",
+            "cloud_area_fraction_in_atmosphere_layer",
+            "sea_ice_area_fraction",
+            "surface_snow_area_fraction",
+            "surface_snow_density",
+            "surface_snow_thickness",
+            "lwe_thickness_of_surface_snow_amount",
+            "volume_fraction_of_condensed_water_in_soil",
+            "atmosphere_mass_content_of_water",
+            "atmosphere_mass_content_of_water_vapor",
+            "atmosphere_convective_available_potential_energy",
+            "lagrangian_tendency_of_air_pressure",
+            "surface_downward_eastward_stress",
+            "surface_downward_northward_stress",
+            "surface_downwelling_shortwave_flux_in_air",
+            "surface_downwelling_longwave_flux_in_air",
+            "surface_diffuse_downwelling_shortwave_flux_in_air",
+            "surface_direct_downwelling_shortwave_flux_in_air",
+            "surface_downward_latent_heat_flux",
+            "surface_downward_sensible_heat_flux",
+            "surface_net_downward_longwave_flux",
+            "surface_net_downward_shortwave_flux",
+            "toa_net_downward_longwave_flux",
+            "equivalent_reflectivity_factor",
+        ),
+        7,
+    ),
+    **dict.fromkeys(
+        (
+            "convective_precipitation_flux",
+            "snowfall_flux",
+            "normalized_difference_vegetation_index",
+        ),
+        8,
+    ),
+    "air_pressure": 10,
+    "surface_air_pressure": 11,
+    "air_pressure_at_mean_sea_level": 11,
+    "geopotential_height": 11,
+    "wind_from_direction": 12,
+}
+# their temperatures are in degC; bits are relative, so K needs about 5 more
+CELSIUS_ONLY = frozenset(n for n in KEEPBITS if n.endswith("temperature"))
+CELSIUS = frozenset({"degree_Celsius", "degrees_Celsius", "degC", "celsius", "°C"})
+# bits are relative precision, so any pressure unit takes the same value
+PRESSURE = frozenset({"Pa", "pascal", "pascals", "hPa", "kPa", "mbar", "millibar"})
 
 
 def round_mantissa(values: np.ndarray, *, keepbits: int) -> np.ndarray:
@@ -59,10 +130,12 @@ def apply_keepbits(ds: xr.Dataset, *, keepbits: Mapping[str, int]) -> xr.Dataset
 
 
 def convention_keepbits(data: Data) -> dict[str, int]:
-    """dynamical.org reformatters mantissa bits: wind 6, precipitation 8, Pa 11.
+    """Mantissa bits from dynamical.org's per-variable choices (``KEEPBITS``).
 
-    Only variables the table names are returned. Mantissa bits are relative
-    precision (7 bits moves 288.15 K to 288.0), so the rest are yours to choose.
+    Matched on CF ``standard_name``, then on "wind", "precip", or "direction" in
+    the name or ``long_name``, or pressure ``units``. Temperatures match only in
+    degC: mantissa bits are relative precision, so 7 bits moves 288.15 K to
+    288.0. Unmatched floats are left out and listed in a warning.
     """
     out: dict[str, int] = {}
     unmatched: list[str] = []
@@ -84,23 +157,24 @@ def convention_keepbits(data: Data) -> dict[str, int]:
 
 
 def _convention(spec: VarSpec) -> int | None:
+    # str(): zarr attrs can hold any JSON value
+    units, sn = (str(spec.attrs.get(k, "")) for k in ("units", "standard_name"))
+    if sn in KEEPBITS:
+        if sn in CELSIUS_ONLY and units not in CELSIUS:
+            return None
+        return KEEPBITS[sn]
+    # no known standard_name: match on names, at the table's values
     text = " ".join(
-        str(s).lower()
-        for s in (
-            spec.name,
-            spec.attrs.get("standard_name"),
-            spec.attrs.get("long_name"),
-        )
-        if s
+        str(s).lower() for s in (spec.name, sn, spec.attrs.get("long_name")) if s
     )
-    if "direction" in text:  # an angle, not a speed
-        return None
+    if "direction" in text:
+        return KEEPBITS["wind_from_direction"]
     if "wind" in text:
-        return 6
+        return KEEPBITS["eastward_wind"]
     if "precip" in text:
-        return 8
-    if spec.attrs.get("units") in PASCAL:
-        return 11
+        return KEEPBITS["precipitation_flux"]
+    if units in PRESSURE:
+        return KEEPBITS["surface_air_pressure"]
     return None
 
 
