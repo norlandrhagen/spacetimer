@@ -250,6 +250,10 @@ def test_accessor_matches_functions():
     enc = ds.spacetimer.recommend("web", sharding=False)
     assert enc == recommend(ds, "web", sharding=False)
     assert ds.spacetimer.report(enc).costs == report(ds, enc).costs
+    t2 = xr.Dataset({"T2": (("Time", "sn", "we"), np.zeros((2, 3, 3), "f4"))})
+    with pytest.warns(UserWarning, match="no spatial dim") as rec:
+        t2.spacetimer.recommend("time")
+    assert rec[0].filename == __file__  # points at the caller, not the accessor
     wind = xr.Dataset({"wind_speed": ("x", np.float32([1.2345678]))})
     assert wind.spacetimer.bitround()["wind_speed"].item() == np.float32(1.234375)
     assert wind.spacetimer.bitround(keepbits={})["wind_speed"].item() != 1.234375
@@ -292,5 +296,9 @@ def test_report_hand_written_encoding():
     assert "<td>1x50x50</td>" in r._repr_html_()
     with pytest.warns(UserWarning, match="\\['typo'\\], not found"):
         assert report([spec], {"typo": {"chunks": (1, 1, 1)}}).costs == {}
+    with pytest.raises(ValueError, match="'v': chunks \\(10, 10\\) has 2 dims"):
+        report([spec], {"v": {"chunks": (10, 10)}})
+    with pytest.raises(ValueError, match="shards"):
+        report([spec], {"v": {"chunks": (1, 5, 5), "shards": (1, 10, 10, 1)}})
     assert _codec_row(numcodecs.Zstd(level=3)) == ("zstd", "level=3, checksum=False")
     assert _fmt_bytes(3 * 1024**4) == "3.0 TiB"

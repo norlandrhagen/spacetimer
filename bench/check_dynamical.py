@@ -1,4 +1,4 @@
-"""Phase 2a: open dynamical's GFS analysis store (metadata only) and score its layout.
+"""Open dynamical's GFS analysis store (metadata only) and score its layout.
 
 uv run python bench/check_dynamical.py
 """

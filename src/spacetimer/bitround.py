@@ -6,7 +6,7 @@ from collections.abc import Mapping
 import numpy as np
 import xarray as xr
 
-from spacetimer.core import Data, VarSpec, _specs
+from spacetimer.core import _PKG, Data, VarSpec, _specs
 
 PASCAL = frozenset({"Pa", "pascal", "pascals"})
 
@@ -78,7 +78,7 @@ def convention_keepbits(data: Data) -> dict[str, int]:
         warnings.warn(
             f"no keepbits convention for {unmatched}; they are left unrounded "
             "unless you add them to the dict",
-            stacklevel=2,
+            skip_file_prefixes=_PKG,
         )
     return out
 

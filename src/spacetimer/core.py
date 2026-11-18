@@ -26,6 +26,8 @@ MiB = 1024 * 1024
 # dynamical's worked example (1440x32x32 in 2880x384x384) holds 288
 MAX_INNER_CHUNKS = 512
 SPATIAL_DIMS = frozenset({"x", "y", "lat", "lon", "latitude", "longitude"})
+# warnings skip our frames so they point at the caller, accessor included
+_PKG = (str(Path(__file__).parent),)
 
 
 class UseCase(StrEnum):
@@ -42,17 +44,26 @@ class UseCase(StrEnum):
 
 
 class SizeBasis(StrEnum):
-    RAW = "raw"  # uncompressed bytes (web tiles are sized by extent)
-    COMPRESSED = "compressed"  # converted to raw with compression_ratio
+    """What a preset's ``chunk_bytes`` measures."""
+
+    RAW = "raw"
+    """Uncompressed bytes (web tiles are sized by extent)."""
+    COMPRESSED = "compressed"
+    """Compressed bytes, converted to raw with ``compression_ratio``."""
 
 
 @dataclass(frozen=True)
 class Preset:
+    """Chunk and shard targets for one use case; see ``PRESETS``."""
+
     chunk_bytes: int
+    """Target chunk size, measured as ``basis`` says."""
     basis: SizeBasis
-    # fixed spatial tile edge, remaining budget goes to time; None = time chunk 1
     spatial_edge: int | None
+    """Fixed spatial tile edge; time takes the rest of the budget. ``None``: one
+    time step per chunk."""
     chunks_per_shard: int
+    """Default chunks per shard along each spatial dim."""
 
 
 PRESETS: dict[UseCase, Preset] = {
@@ -69,11 +80,17 @@ PRESETS: dict[UseCase, Preset] = {
 
 @dataclass(frozen=True)
 class VarSpec:
+    """One variable's metadata, to plan a layout before the data exists."""
+
     name: str
     dims: tuple[str, ...]
     shape: tuple[int, ...]
+    """Final shape; chunks never exceed it."""
     dtype: np.dtype
+    """Anything ``np.dtype`` accepts, e.g. ``"f4"``."""
     attrs: Mapping[str, Any] = field(default_factory=dict)
+    """CF attributes; ``convention_keepbits`` reads ``standard_name``,
+    ``long_name``, and ``units``."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dtype", np.dtype(self.dtype))
@@ -88,8 +105,11 @@ Data = xr.Dataset | zarr.Group | Iterable[VarSpec]
 
 
 class Encoding(TypedDict):
+    """One variable's entry in the ``to_zarr`` encoding ``recommend`` returns."""
+
     chunks: tuple[int, ...]
     shards: NotRequired[tuple[int, ...]]
+    """Absent with ``sharding=False``."""
     compressors: tuple[BytesBytesCodec, ...]
 
 
@@ -99,10 +119,14 @@ class Costs:
 
     chunk_mib: float
     shard_mib: float | None
-    objects: int  # shards, or chunks when unsharded
-    slice_chunks: int  # chunks read for one full spatial slice
+    """``None`` when unsharded."""
+    objects: int
+    """Stored objects: shards, or chunks when unsharded."""
+    slice_chunks: int
+    """Chunks read for one full spatial slice (one map)."""
     slice_mib: float
-    series_chunks: int  # chunks read for one point's full time series
+    series_chunks: int
+    """Chunks read for one point's full time series."""
     series_mib: float
 
 
@@ -164,7 +188,7 @@ def recommend(
             warnings.warn(
                 f"{spec.name!r}: no time dim found in {spec.dims}, so the "
                 f"{use_case.value!r} layout falls back to spatial tiles; pass time_dim=",
-                stacklevel=2,
+                skip_file_prefixes=_PKG,
             )
         if (
             chunks_per_shard
@@ -173,7 +197,7 @@ def recommend(
             warnings.warn(
                 f"{spec.name!r}: chunks_per_shard={chunks_per_shard} reduced to {k} "
                 f"to keep a shard at or under {MAX_INNER_CHUNKS} chunks",
-                stacklevel=2,
+                skip_file_prefixes=_PKG,
             )
         chunks, shards = _layout(spec, preset, raw_chunk_bytes, cps, spatial, t)
         enc = Encoding(
@@ -187,7 +211,7 @@ def recommend(
         warnings.warn(
             f"no spatial dim in {skipped}, left to Xarray defaults; "
             "pass spatial_dims= if their dims have other names",
-            stacklevel=2,
+            skip_file_prefixes=_PKG,
         )
     return encoding
 
@@ -273,7 +297,7 @@ class Report:
     """
 
     costs: dict[str, Costs]
-    encoding: Mapping[str, Encoding]
+    encoding: Mapping[str, Mapping[str, Any]]
     compression_ratio: float
     specs: Mapping[str, VarSpec]
 
@@ -360,7 +384,7 @@ def _toggle(label: str, *, opened: bool) -> str:
 
 
 def _var_html(
-    spec: VarSpec, enc: Encoding, costs: Costs, *, ratio: float, opened: bool
+    spec: VarSpec, enc: Mapping[str, Any], costs: Costs, *, ratio: float, opened: bool
 ) -> str:
     chunks, shards = enc["chunks"], enc.get("shards")
     cols = [("array", spec.shape), ("chunk", chunks)]
@@ -433,13 +457,17 @@ def _var_html(
 
 def report(
     data: Data,
-    encoding: Mapping[str, Encoding],
+    encoding: Mapping[str, Mapping[str, Any]],
     *,
     compression_ratio: float = 0.2,
     spatial_dims: Collection[str] = SPATIAL_DIMS,
     time_dim: str | None = None,
 ) -> Report:
-    """Estimate read and storage costs of ``encoding`` (any, not only ours)."""
+    """Estimate read and storage costs of ``encoding`` (any, not only ours).
+
+    Each entry needs ``chunks``; ``shards`` and ``compressors`` are optional, so
+    a hand-written dict or an array's ``.encoding`` works.
+    """
     _check_ratio(compression_ratio)
     out: dict[str, Costs] = {}
     specs: dict[str, VarSpec] = {}
@@ -447,6 +475,12 @@ def report(
         if spec.name not in encoding:
             continue
         enc = encoding[spec.name]
+        for key in ("chunks", "shards"):
+            if (grid := enc.get(key)) is not None and len(grid) != len(spec.shape):
+                raise ValueError(
+                    f"{spec.name!r}: {key} {tuple(grid)} has {len(grid)} dims, "
+                    f"data has {len(spec.shape)} {spec.dims}"
+                )
         spatial = [i for i, d in enumerate(spec.dims) if d in spatial_dims]
         t = _time_axis(spec, spatial, time_dim)
         out[spec.name] = _costs(
@@ -454,7 +488,9 @@ def report(
         )
         specs[spec.name] = spec
     if missing := sorted(set(encoding) - set(out)):
-        warnings.warn(f"encoding names {missing}, not found in data", stacklevel=2)
+        warnings.warn(
+            f"encoding names {missing}, not found in data", skip_file_prefixes=_PKG
+        )
     return Report(out, encoding, compression_ratio, specs)
 
 
@@ -489,7 +525,9 @@ def _specs(obj: Data) -> list[VarSpec]:
             if dims and dims != (name,) and name not in coords:
                 specs.append(VarSpec(name, dims, arr.shape, arr.dtype, dict(arr.attrs)))
         if unnamed:
-            warnings.warn(f"no dimension names on {unnamed}, skipped", stacklevel=3)
+            warnings.warn(
+                f"no dimension names on {unnamed}, skipped", skip_file_prefixes=_PKG
+            )
         return specs
     if isinstance(obj, xr.DataArray):  # iterating one would yield its slices
         raise TypeError("pass a Dataset (da.to_dataset()), zarr.Group, or VarSpecs")
@@ -658,7 +696,7 @@ class SpacetimerAccessor:
 
     def report(
         self,
-        encoding: Mapping[str, Encoding],
+        encoding: Mapping[str, Mapping[str, Any]],
         *,
         compression_ratio: float = 0.2,
         spatial_dims: Collection[str] = SPATIAL_DIMS,
