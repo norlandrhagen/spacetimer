@@ -1,7 +1,9 @@
 import inspect
 import math
+import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 from hypothesis import given
@@ -309,5 +311,23 @@ def test_report_hand_written_encoding():
         report([spec], {"v": {"chunks": (10, 10)}})
     with pytest.raises(ValueError, match="shards"):
         report([spec], {"v": {"chunks": (1, 5, 5), "shards": (1, 10, 10, 1)}})
+    with pytest.raises(ValueError, match="no chunks"):
+        report([spec], {"v": {"shards": (10, 50, 50)}})
+    for bad in ((0, 50, 50), {"time": 1, "y": 50, "x": 50}):
+        with pytest.raises(ValueError, match="tuple of positive ints"):
+            report([spec], {"v": {"chunks": bad}})
     assert _codec_row(numcodecs.Zstd(level=3)) == ("zstd", "level=3, checksum=False")
     assert _fmt_bytes(3 * 1024**4) == "3.0 TiB"
+
+
+@pytest.mark.parametrize(("freq", "warns"), [("h", False), ("D", True)])
+def test_warns_on_time_chunks_over_a_year(freq, warns):
+    shape = (365 * 30, 64, 64)
+    ds = xr.Dataset(
+        {"v": (("time", "lat", "lon"), np.broadcast_to(np.float32(0), shape))},
+        coords={"time": pd.date_range("1990", periods=shape[0], freq=freq)},
+    )
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        recommend(ds, "time")
+    assert any("a year or less" in str(x.message) for x in w) == warns

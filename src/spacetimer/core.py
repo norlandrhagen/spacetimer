@@ -22,6 +22,11 @@ MiB = 1024 * 1024
 # dynamical's worked example (1440x32x32 in 2880x384x384) holds 288
 MAX_INNER_CHUNKS = 512
 MIN_EDGE = 32  # the time preset's tile, so balanced never reads more per map
+YEAR = np.timedelta64(365, "D")
+YEAR_RULE = (
+    "https://github.com/dynamical-org/reformatters/blob/"
+    "cb7d15bfe5dfba501ed383041d141444d6ee7009/src/scripts/chunk_shard_size.py#L330-L339"
+)
 SPATIAL_DIMS = frozenset({"x", "y", "lat", "lon", "latitude", "longitude"})
 # CF coordinate metadata that marks a coordinate's dims as spatial
 CF_SPATIAL_NAMES = frozenset(
@@ -188,6 +193,7 @@ def recommend(
         )
 
     spatial_dims, cf_time = _roles(data, spatial_dims)
+    steps = _time_steps(data)
     encoding: dict[str, Encoding] = {}
     skipped: list[str] = []
     for spec in _specs(data):
@@ -216,6 +222,17 @@ def recommend(
                 skip_file_prefixes=_PKG,
             )
         chunks, shards = _layout(spec, preset, raw_chunk_bytes, cps, spatial, t)
+        if (
+            t is not None
+            and (step := steps.get(spec.dims[t])) is not None
+            and chunks[t] * step > YEAR
+        ):
+            warnings.warn(
+                f"{spec.name!r}: a time chunk spans {chunks[t] * step / np.timedelta64(1, 'D'):,.0f} "
+                f"days; dynamical.org keeps them to a year or less ({YEAR_RULE}). "
+                "Pass a smaller raw_chunk_bytes to shorten them",
+                skip_file_prefixes=_PKG,
+            )
         enc = Encoding(
             chunks=chunks,
             compressors=tuple(compressors),
@@ -340,8 +357,19 @@ def report(
         if spec.name not in encoding:
             continue
         enc = encoding[spec.name]
+        if "chunks" not in enc:
+            raise ValueError(f"{spec.name!r}: encoding has no chunks")
         for key in ("chunks", "shards"):
-            if (grid := enc.get(key)) is not None and len(grid) != len(spec.shape):
+            if (grid := enc.get(key)) is None:
+                continue
+            if isinstance(grid, Mapping) or any(
+                not isinstance(n, int) or n < 1 for n in grid
+            ):
+                raise ValueError(
+                    f"{spec.name!r}: {key} must be a tuple of positive ints, one per "
+                    f"dim of {spec.dims}; got {grid!r}"
+                )
+            if len(grid) != len(spec.shape):
                 raise ValueError(
                     f"{spec.name!r}: {key} {tuple(grid)} has {len(grid)} dims, "
                     f"data has {len(spec.shape)} {spec.dims}"
@@ -418,6 +446,8 @@ def _specs(obj: Data) -> list[VarSpec]:
 
 def _dims(arr: zarr.Array) -> tuple[str, ...] | None:
     """Dimension names from v3 metadata or the v2 ``_ARRAY_DIMENSIONS`` attr."""
+    if arr.ndim == 0:  # zarr stores no names for scalars like spatial_ref
+        return ()
     names = getattr(arr.metadata, "dimension_names", None) or arr.attrs.get(
         "_ARRAY_DIMENSIONS"
     )
@@ -483,6 +513,18 @@ def _roles(
     if spatial_dims is SPATIAL_DIMS:  # the default: names plus coordinate metadata
         spatial_dims = SPATIAL_DIMS | spatial
     return spatial_dims, time - set(spatial_dims)
+
+
+def _time_steps(data: Data) -> dict[str, np.timedelta64]:
+    """Spacing of each datetime index. A Dataset holds its indexes in memory; a
+    Group would need a data read, so it gets none."""
+    if not isinstance(data, xr.Dataset):
+        return {}
+    return {
+        str(d): v[1] - v[0]
+        for d, idx in data.indexes.items()
+        if len(v := np.asarray(idx)) > 1 and np.issubdtype(v.dtype, np.datetime64)
+    }
 
 
 def _time_axis(

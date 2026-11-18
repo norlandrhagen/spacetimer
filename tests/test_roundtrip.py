@@ -1,3 +1,5 @@
+import warnings
+
 import icechunk
 import numpy as np
 import pytest
@@ -76,7 +78,10 @@ def test_group_skips_2d_coords_and_warns_on_unnamed():
     store = MemoryStore()
     ds.to_zarr(store, zarr_format=3, consolidated=False)
     group = zarr.open_group(store, mode="a")
-    assert recommend(group, "space") == recommend(ds, "space")
+    group.create_array("spatial_ref", shape=(), dtype="i8")  # 0-D, as in dynamical's
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert recommend(group, "space") == recommend(ds, "space")
     group.create_array("raw", shape=(4, 5), dtype="f4")  # no dimension_names
     with pytest.warns(UserWarning, match="no dimension names on \\['raw'\\]"):
         recommend(group, "space")

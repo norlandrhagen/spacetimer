@@ -35,4 +35,4 @@ jobs:
         run: uv run mkdocs build --strict
 
       - name: Report examples up to date
-        run: uv run python tools/make_report_example.py && git diff --exit-code docs/assets
+        run: uv run python tools/make_report_example.py && git add --intent-to-add docs/assets && git diff --exit-code docs/assets
