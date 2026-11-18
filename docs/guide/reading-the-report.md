@@ -27,7 +27,7 @@ spacetimer.report(ds, spacetimer.recommend(ds, "time"))
 
 The report is one collapsible row per variable, like the Xarray repr; the first row starts open. A row shows array, chunk, and shard sizes beside a cube of the chunk grid, and what one map or one time series reads. `size` is uncompressed, like the Xarray repr; read sizes apply `compression_ratio`. `show shards` redraws the cube with shard boundaries, and `encoding` shows what to pass to `to_zarr`. Axes with many chunks draw every n-th line; shard lines always fall on chunk lines, and shards draw fewer lines than chunks.
 
-The "one time series" line needs to know which axis is time. It looks for a dim with `time` in its name; if yours is called something else, pass `time_dim="..."`.
+The "one time series" line needs to know which axis is time. It uses a coordinate's CF metadata or datetime dtype, then a dim with `time` in its name; if neither finds it, pass `time_dim="..."`.
 
 === "time"
 

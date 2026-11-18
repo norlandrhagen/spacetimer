@@ -23,6 +23,23 @@ MiB = 1024 * 1024
 MAX_INNER_CHUNKS = 512
 MIN_EDGE = 32  # the time preset's tile, so balanced never reads more per map
 SPATIAL_DIMS = frozenset({"x", "y", "lat", "lon", "latitude", "longitude"})
+# CF coordinate metadata that marks a coordinate's dims as spatial
+CF_SPATIAL_NAMES = frozenset(
+    {
+        "latitude",
+        "longitude",
+        "grid_latitude",
+        "grid_longitude",
+        "projection_x_coordinate",
+        "projection_y_coordinate",
+    }
+)
+CF_DEGREES = frozenset(
+    f"{deg}{sep}{d}"
+    for deg in ("degree", "degrees")
+    for sep in ("_", "")
+    for d in ("north", "east", "N", "E")
+)
 # warnings skip our frames so they point at the caller, accessor included
 _PKG = (str(Path(__file__).parent),)
 
@@ -170,6 +187,7 @@ def recommend(
             else int(preset.chunk_bytes / compression_ratio)
         )
 
+    spatial_dims, cf_time = _roles(data, spatial_dims)
     encoding: dict[str, Encoding] = {}
     skipped: list[str] = []
     for spec in _specs(data):
@@ -177,7 +195,7 @@ def recommend(
         if not spatial:
             skipped.append(spec.name)
             continue
-        t = _time_axis(spec, spatial, time_dim)
+        t = _time_axis(spec, spatial, time_dim, cf_time)
         if (
             preset.spatial_edge is not None
             and t is None
@@ -310,6 +328,7 @@ def report(
     a hand-written dict or an array's ``.encoding`` works.
     """
     _check_ratio(compression_ratio)
+    spatial_dims, cf_time = _roles(data, spatial_dims)
     out: dict[str, Costs] = {}
     specs: dict[str, VarSpec] = {}
     for spec in _specs(data):
@@ -323,7 +342,7 @@ def report(
                     f"data has {len(spec.shape)} {spec.dims}"
                 )
         spatial = [i for i, d in enumerate(spec.dims) if d in spatial_dims]
-        t = _time_axis(spec, spatial, time_dim)
+        t = _time_axis(spec, spatial, time_dim, cf_time)
         out[spec.name] = _costs(
             spec, enc["chunks"], enc.get("shards"), spatial, t, compression_ratio
         )
@@ -348,21 +367,12 @@ def _specs(obj: Data) -> list[VarSpec]:
         ]
     if isinstance(obj, zarr.Group):
         arrays = dict(obj.arrays())
-        # non-dimension coords (e.g. 2-D lat/lon), as Xarray records them
-        coords = {
-            c
-            for attrs in (obj.attrs, *(a.attrs for a in arrays.values()))
-            for c in str(attrs.get("coordinates", "")).split()
-        }
+        coords = _coord_names(obj, arrays)
         specs, unnamed = [], []
         for name, arr in arrays.items():
-            names = getattr(arr.metadata, "dimension_names", None) or arr.attrs.get(
-                "_ARRAY_DIMENSIONS"
-            )
-            if not isinstance(names, (list, tuple)):
+            if (dims := _dims(arr)) is None:
                 unnamed.append(name)
                 continue
-            dims = tuple(map(str, names))
             if dims and dims != (name,) and name not in coords:
                 specs.append(VarSpec(name, dims, arr.shape, arr.dtype, dict(arr.attrs)))
         if unnamed:
@@ -375,12 +385,84 @@ def _specs(obj: Data) -> list[VarSpec]:
     return list(obj)
 
 
-def _time_axis(spec: VarSpec, spatial: list[int], time_dim: str | None) -> int | None:
+def _dims(arr: zarr.Array) -> tuple[str, ...] | None:
+    """Dimension names from v3 metadata or the v2 ``_ARRAY_DIMENSIONS`` attr."""
+    names = getattr(arr.metadata, "dimension_names", None) or arr.attrs.get(
+        "_ARRAY_DIMENSIONS"
+    )
+    return tuple(map(str, names)) if isinstance(names, (list, tuple)) else None
+
+
+def _coord_names(group: zarr.Group, arrays: Mapping[str, zarr.Array]) -> set[str]:
+    """Non-dimension coords (e.g. 2-D lat/lon), as Xarray records them."""
+    return {
+        c
+        for attrs in (group.attrs, *(a.attrs for a in arrays.values()))
+        for c in str(attrs.get("coordinates", "")).split()
+    }
+
+
+def _coords(obj: Data) -> list[tuple[str, tuple[str, ...], np.dtype, Mapping]]:
+    """(name, dims, dtype, attrs) of each coordinate; none for ``VarSpec``s."""
+    if isinstance(obj, xr.Dataset):
+        return [
+            (str(n), tuple(map(str, c.dims)), c.dtype, c.attrs)
+            for n, c in obj.coords.items()
+        ]
+    if isinstance(obj, zarr.Group):
+        arrays = dict(obj.arrays())
+        named = _coord_names(obj, arrays)
+        return [
+            (name, dims, arr.dtype, arr.attrs)
+            for name, arr in arrays.items()
+            if (dims := _dims(arr)) is not None and (dims == (name,) or name in named)
+        ]
+    return []
+
+
+def _roles(
+    data: Data, spatial_dims: Collection[str]
+) -> tuple[Collection[str], set[str]]:
+    """Add CF-marked spatial dims to the default names, and find CF time dims.
+
+    A coordinate is spatial by ``axis`` X/Y, a lat/lon/projection
+    ``standard_name``, or degrees north/east ``units``; time by ``axis`` T,
+    ``standard_name`` time, "since" ``units``, or a datetime dtype. Bounds
+    coordinates are skipped. Explicit ``spatial_dims`` are used as given.
+    """
+    coords = _coords(data)
+    bounds = {str(a["bounds"]) for *_, a in coords if "bounds" in a}
+    spatial: set[str] = set()
+    time: set[str] = set()
+    for name, dims, dtype, attrs in coords:
+        if name in bounds:
+            continue
+        axis, sn, units = (
+            str(attrs.get(k, "")) for k in ("axis", "standard_name", "units")
+        )
+        if axis in ("X", "Y") or sn in CF_SPATIAL_NAMES or units in CF_DEGREES:
+            spatial.update(dims)
+        elif len(dims) == 1 and (
+            axis == "T"
+            or sn == "time"
+            or " since " in units
+            or np.issubdtype(dtype, np.datetime64)
+        ):
+            time.update(dims)
+    if spatial_dims is SPATIAL_DIMS:  # the default: names plus coordinate metadata
+        spatial_dims = SPATIAL_DIMS | spatial
+    return spatial_dims, time - set(spatial_dims)
+
+
+def _time_axis(
+    spec: VarSpec, spatial: list[int], time_dim: str | None, cf_time: Collection[str]
+) -> int | None:
     if time_dim is not None:
         return spec.dims.index(time_dim) if time_dim in spec.dims else None
     other = [i for i in range(len(spec.dims)) if i not in spatial]
-    # name match, forecast (init_time x lead_time) treats init_time as time
-    return next((i for i in other if "time" in spec.dims[i]), None)
+    # CF metadata first, then names; forecast (init_time x lead_time) takes init_time
+    by_cf = [i for i in other if spec.dims[i] in cf_time]
+    return next(iter(by_cf + [i for i in other if "time" in spec.dims[i]]), None)
 
 
 def _iroot(x: int, n: int) -> int:

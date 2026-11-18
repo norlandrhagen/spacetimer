@@ -30,9 +30,11 @@ To set the size yourself, pass `raw_chunk_bytes`, the uncompressed size in bytes
 
 ## Dimension names
 
-`spacetimer` finds spatial dimensions by name: `x`, `y`, `lat`, `lon`, `latitude`, or `longitude`. Every variable with a spatial dimension gets an entry in the encoding. Variables without one keep Xarray's defaults, and a warning lists them. `"time"` and `"balanced"` also warn if they can't find a time dimension.
+`spacetimer` finds spatial dimensions by name: `x`, `y`, `lat`, `lon`, `latitude`, or `longitude`. For a Dataset or Zarr group, it also reads the CF metadata on coordinates. A coordinate with `axis` X or Y, a latitude, longitude, or projection `standard_name`, or `units` of degrees north or east marks its dimensions as spatial. This finds WRF's `south_north` and `west_east` through their 2-D `XLAT`/`XLONG` coordinates. The time dimension is found the same way: `axis` T, `standard_name` time, `units` like "hours since 2000-01-01", or a datetime coordinate. Otherwise any dimension with "time" in its name is used.
 
-If your dimensions have other names, pass `spatial_dims=("row", "col")`. If the name of your time dimension doesn't contain "time", pass `time_dim="valid_time"`.
+Every variable with a spatial dimension gets an entry in the encoding. Variables without one keep Xarray's defaults, and a warning lists them. `"time"` and `"balanced"` also warn if they can't find a time dimension.
+
+If detection misses, pass `spatial_dims=("row", "col")`, which replaces both the names and the metadata detection. For time, pass `time_dim="valid_time"`.
 
 ## Compression
 
