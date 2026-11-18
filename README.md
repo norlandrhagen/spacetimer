@@ -5,8 +5,10 @@ Chunk and shard recommendations for Zarr, based on how people will read your dat
 ## Install
 
 ```bash
-uv add git+https://github.com/norlandrhagen/spacetimer
+uv add spacetimer
 ```
+
+Or with pip: `pip install spacetimer`.
 
 ## Usage
 
@@ -22,4 +24,4 @@ See the [docs](https://norlandrhagen.github.io/spacetimer/) for options, bitroun
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/norlandrhagen/spacetimer/blob/main/LICENSE)
